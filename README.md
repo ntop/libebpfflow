@@ -16,6 +16,7 @@ libebpfflow is a traffic visibility library based on eBPF able to compute networ
 ### Usage
 In order demonstrate how to use the library you can refer to the [ntopng](https://github.com/ntop/ntopng) code or inspect the code of the ebptest application.
 
+```sh
 $ sudo ./ebpftest
 Initializing eBPF [Legacy API]...
 eBPF initializated successfully
@@ -44,6 +45,7 @@ eBPF initializated successfully
 1550097255.665312 [enp5s0][Rcvd][IPv4/UDP][][pid/tid: 0/0 [], uid/gid: 0/0][father pid/tid: 0/0 [], uid/gid: 0/0][addr: 192.168.96.195:17500 <-> 255.255.255.255:17500]
 1550097255.665878 [enp5s0][Rcvd][IPv4/UDP][][pid/tid: 0/0 [], uid/gid: 0/0][father pid/tid: 0/0 [], uid/gid: 0/0][addr: 192.168.96.195:17500 <-> 192.168.99.255:17500]
 1550097256.034440 [eth0][Sent][IPv4/TCP][7109bf5e5e043fb620f91dc6fad30a1b0b8fb4eb9ed83f80b8dbf333f410f9][pid/tid: 29589/29589 [/usr/bin/curl], uid/gid: 0/0][father pid/tid: 26673/0 [/bin/bash], uid/gid: 0/0][addr: 172.17.0.2:54120 <-> 178.62.197.130:80][latency: 0.18 msec]
+```
 
 ### Open Issues
 While the library is already usable in production, we plan to add some additional features including:
