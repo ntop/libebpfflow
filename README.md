@@ -17,7 +17,9 @@ libebpfflow is a traffic visibility library based on eBPF able to compute networ
 You need a modern eBPF-enabled Linux distribution.
 
 On Ubuntu 18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
+```sh
 $ sudo apt-get install libbpfcc-dev
+```
 
 ### Usage
 In order demonstrate how to use the library you can refer to the [ntopng](https://github.com/ntop/ntopng) code or inspect the code of the ebptest application.
