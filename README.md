@@ -13,11 +13,19 @@ libebpfflow is a traffic visibility library based on eBPF able to compute networ
 * TCP latency computation
 * Process and user visibility
 
+### Requirements
+You need a modern eBPF-enabled Linux distribution.
+
+On Ubuntu 18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
+$ sudo apt-get install libbpfcc-dev
+
 ### Usage
 In order demonstrate how to use the library you can refer to the [ntopng](https://github.com/ntop/ntopng) code or inspect the code of the ebptest application.
 
 ```sh
 $ sudo ./ebpftest
+Welcome to libebpfflow v.1.0.190213
+(C) 2018-19 ntop.org
 Initializing eBPF [Legacy API]...
 eBPF initializated successfully
 1550096766.241662 [lo][Sent][IPv4/TCP][/][pid/tid: 23933/21802 [/usr/lib/chromium-browser/chromium-browser], uid/gid: 1000/1000][father pid/tid: 19407/0 [/usr/bin/gnome-shell], uid/gid: 1000/1000][addr: 127.0.0.1:55496 <-> 127.0.0.1:9229][latency: 0.16 msec]

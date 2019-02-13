@@ -1,0 +1,622 @@
+/*
+ *
+ * (C) 2018-19 - ntop.org
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *
+ */
+
+#include <uapi/linux/ptrace.h>
+#include <net/sock.h>
+#include <bcc/proto.h>
+#include <linux/pid_namespace.h>
+#include <uapi/linux/ip.h>
+#include <uapi/linux/udp.h>
+#include <uapi/linux/ipv6.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wtautological-compare"
+#include <net/inet_sock.h>
+#pragma clang diagnostic pop
+
+struct sock_stats {
+  struct sock *sk;
+  u64    ts;
+};
+
+// hash map currsock
+BPF_HASH(currsock, u32, struct sock_stats);
+
+#define CGROUP_ID_LEN 64 // max is in limits.h -> NAME_MAX
+
+#define COMMAND_LEN  TASK_COMM_LEN
+
+struct taskInfo {
+  u32 pid; /* Process Id */
+  u32 tid; /* Thread Id  */
+  u32 uid; /* User Id    */
+  u32 gid; /* Group Id   */
+  char task[COMMAND_LEN], *full_task;
+};
+
+struct netInfo {
+  u16 sport;
+  u16 dport;
+  u8  proto;
+  u32 latency_usec;
+};
+
+// separate data structs for ipv4 and ipv6
+struct ipv4_data_t {
+  u64 saddr;
+  u64 daddr;
+  struct netInfo net;
+};
+
+struct ipv6_data_t {
+  unsigned __int128 saddr;
+  unsigned __int128 daddr;
+  struct netInfo net;
+};
+
+typedef struct {
+  ktime_t ktime;
+  char ifname[IFNAMSIZ];
+  struct timeval event_time;
+  u_int8_t ip_version:4, sent_packet:4;
+
+  union {
+    struct ipv4_data_t v4;
+    struct ipv6_data_t v6;
+  } event;
+
+  struct taskInfo proc, father;
+  char cgroup_id[CGROUP_ID_LEN];
+} eBPFevent;
+
+BPF_PERF_OUTPUT(ebpf_events);
+
+struct udp_info {
+  struct taskInfo proc, father;
+  char cgroup_id[CGROUP_ID_LEN];
+};
+BPF_HASH(udpinfo, u16, struct udp_info);
+
+
+static void fill_ifname(eBPFevent *ev, struct sock *sk);
+
+/* ******************************************* */
+
+static void update_socket_hash(struct pt_regs *ctx, struct sock *sk) {
+  u32 tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;
+  struct sock_stats s = { .sk = sk, .ts = bpf_ktime_get_ns() };
+
+  // stash the sock ptr for lookup on returns
+  currsock.update(&tid, &s);
+};
+
+/* ******************************************* */
+
+int trace_connect_entry(struct pt_regs *ctx, struct sock *sk) {
+  update_socket_hash(ctx, sk);
+
+  // bpf_override_return(ctx, -ENOMEM);
+  return(0);
+};
+
+/* ******************************************* */
+
+static void fill_father_task_info(struct taskInfo *task) {
+  // Parent basic info ----- //
+  struct task_struct *t = (struct task_struct *)bpf_get_current_task();
+  struct task_struct *parent;
+  struct cred *fcredential;
+
+  // Grabbing father pointer
+  // bpf_probe_read(&parent, sizeof(struct task_struct *), &t->real_parent);
+  parent = t->real_parent;
+
+  // Reading father credential
+  // bpf_probe_read(&fcredential, sizeof(struct cred *), &parent->real_cred);
+  fcredential = (struct cred *)(parent->real_cred);
+
+  task->pid = (u32)parent->pid;
+  task->uid = (u32)fcredential->uid.val;
+  task->gid = (u32)fcredential->gid.val;
+
+  if(task->pid == 0)
+    task->task[0] = '\0';
+  else
+    bpf_probe_read(&task->task, sizeof(task->task), parent->comm);
+}
+
+/* ******************************************* */
+
+static void fill_cgroup_id(char *cgroup_id) {
+  struct task_struct *curr_task;
+  struct cgroup *cg;
+  struct css_set *css;
+  struct cgroup_subsys_state *sbs;
+  struct kernfs_node *knode, *pknode;
+
+// Initializing to root cgroup
+  memcpy(cgroup_id, "/\0", 2);
+
+  curr_task = (struct task_struct *) bpf_get_current_task();
+  css = curr_task->cgroups;
+  bpf_probe_read(&sbs, sizeof(void *), &css->subsys[0]);
+  bpf_probe_read(&cg,  sizeof(void *), &sbs->cgroup);
+
+  // Reading fspath
+  bpf_probe_read(&knode, sizeof(void *), &cg->kn);
+  bpf_probe_read(&pknode, sizeof(void *), &knode->parent);
+  
+  if(pknode != NULL) {
+    char *aus;
+    
+    bpf_probe_read(&aus, sizeof(void *), &knode->name);
+    bpf_probe_read_str(cgroup_id, CGROUP_ID_LEN-1, aus);
+  }
+}
+
+/* ******************************************* */
+
+static void fill_task_info(char *cgroup_id, struct taskInfo *task, struct taskInfo *father) {
+  struct task_struct *curr_task = (struct task_struct *)bpf_get_current_task();
+  u64 tgid = bpf_get_current_pid_tgid();
+  u64 ugid = bpf_get_current_uid_gid();
+  u32 pid = tgid & 0xFFFFFFFF, tid = (tgid >> 32) & 0xFFFFFFFF;
+  u32 uid = ugid & 0xFFFFFFFF, gid = (ugid >> 32) & 0xFFFFFFFF;
+
+  task->pid = pid;
+  task->tid = tid;
+  task->uid = uid;
+  task->gid = gid;
+
+  if(pid == 0) 
+    task->task[0] = '\0';
+  else {
+    bpf_get_current_comm(&task->task, sizeof(task->task));
+    fill_father_task_info(father);
+  }
+
+  cgroup_id[0] = '\0';
+  fill_cgroup_id(cgroup_id);
+}
+
+/* ******************************************* */
+
+static void swap_event_peers(eBPFevent *ev) {
+  if(ev->ip_version == 4) {
+    u32 tmp;
+    u16 tmp16;
+
+    tmp16 = ev->event.v4.net.sport;
+    ev->event.v4.net.sport = ev->event.v4.net.dport;
+    ev->event.v4.net.dport = tmp16;
+
+    tmp = ev->event.v4.daddr;
+    ev->event.v4.daddr = ev->event.v4.saddr;
+    ev->event.v4.saddr = tmp;
+  } else {
+    u16 tmp16;
+    unsigned __int128 tmp;
+
+    tmp16 = ev->event.v4.net.sport;
+    ev->event.v4.net.sport = ev->event.v4.net.dport;
+    ev->event.v4.net.dport = tmp16;
+
+    memcpy(&tmp, &ev->event.v6.saddr, sizeof(tmp));
+    memcpy(&ev->event.v6.saddr, &ev->event.v6.daddr, sizeof(ev->event.v6.saddr));
+    memcpy(&ev->event.v6.daddr, &tmp, sizeof(ev->event.v6.daddr));
+  }
+}
+
+/* ******************************************* */
+
+static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
+		      struct sock *sk,
+		      void *msg,
+		      u64 begin_ts,
+		      u8 proto, u8 swap_peers) {
+  u16 sport = 0, dport = 0;
+  u16 family;
+  u64 delta;
+  u32 pid    = bpf_get_current_pid_tgid() & 0xFFFFFFFF;
+  u32 saddr  = 0, daddr = 0;
+  ktime_t kt = { bpf_ktime_get_ns() };
+
+  ev->sent_packet = (swap_peers == 0) ? 1 : 0;
+  
+  bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
+  if((family != AF_INET) && (family != AF_INET6)) return(-1);
+
+  bpf_probe_read(&sport, sizeof(u16), &sk->__sk_common.skc_num);
+  bpf_probe_read(&dport, sizeof(u16), &sk->__sk_common.skc_dport);
+
+  if(msg) {
+    struct sockaddr_in usin;
+
+    bpf_probe_read(&usin, sizeof(usin), msg);
+    family = usin.sin_family;
+
+    if(usin.sin_family == AF_INET) {
+      daddr = usin.sin_addr.s_addr;
+      dport = usin.sin_port;
+    }
+  }
+
+  if(begin_ts > 0) {
+    delta = bpf_ktime_get_ns() - begin_ts;
+    delta /= 1000;
+  } else
+    delta = 0;
+
+  dport = ntohs(dport); /* This has to be done all the time */
+
+  if((sport == 0) && (dport == 0))
+    return(-1);
+
+  if(family == AF_INET) {
+    ev->ip_version = 4;
+    ev->proc.pid = pid;
+
+    if(saddr == 0)
+      bpf_probe_read(&ev->event.v4.saddr, sizeof(u32), &sk->__sk_common.skc_rcv_saddr);
+    else
+      ev->event.v4.saddr = saddr;
+
+    if(daddr == 0)
+      bpf_probe_read(&ev->event.v4.daddr, sizeof(u32), &sk->__sk_common.skc_daddr);
+    else
+      ev->event.v4.daddr = daddr;
+
+    ev->event.v4.net.sport = sport;
+    ev->event.v4.net.dport = dport;
+    ev->event.v4.net.proto = proto;
+    ev->event.v4.net.latency_usec = delta;
+  } else /* (family == AF_INET6)  */ {
+    ev->ip_version = 6;
+    ev->proc.pid = pid;
+    bpf_probe_read(&ev->event.v6.saddr, sizeof(ev->event.v6.saddr), sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+    bpf_probe_read(&ev->event.v6.daddr, sizeof(ev->event.v6.daddr), sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+
+    if(
+       /* Implement in a better way */
+       (((ev->event.v6.saddr) & 0xFFFFFFFF) == 0) && (((ev->event.v6.saddr >> 32) & 0xFFFFFFFF) == 0)
+       ) {
+      /* ::ffff:127.0.0.1 in IPv6 */
+
+      ev->ip_version = 4;
+      ev->proc.pid = pid;
+      ev->event.v4.saddr = 0x0100007f; /* 127.0.0.1 */
+      ev->event.v4.net.sport = sport;
+      ev->event.v4.daddr = 0x0100007f; /* 127.0.0.1 */
+      ev->event.v4.net.dport = dport;
+      ev->event.v4.net.latency_usec = delta;
+      ev->event.v4.net.proto = proto;
+      bpf_get_current_comm(&ev->proc.task, sizeof(ev->proc.task));
+    } else {
+      ev->event.v6.net.sport = sport;
+      ev->event.v6.net.dport = dport;
+      ev->proc.pid = pid;
+      ev->event.v6.net.proto = proto;
+      ev->event.v6.net.latency_usec = delta;
+    }
+  }
+
+  fill_task_info((char*)ev->cgroup_id, &ev->proc, &ev->father);
+  
+  if(swap_peers) swap_event_peers(ev);
+
+  fill_ifname(ev, sk);
+
+  ev->ktime = kt;
+  return(0);
+}
+
+/* ******************************************* */
+
+static int trace_connect_return(struct pt_regs *ctx) {
+  int ret = PT_REGS_RC(ctx); // return value
+  struct sock_stats *s;
+  u32 tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;
+  eBPFevent event = { .ip_version = 4 };
+
+  s = currsock.lookup(&tid);
+  if(s == NULL)
+    return(0); // missed entry
+
+  if(ret == 0) {
+    fill_event(ctx, &event, s->sk, NULL, s->ts, IPPROTO_TCP, 0 /* don't swap */);
+    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  }
+
+  currsock.delete(&tid);
+
+  return(0);
+}
+
+/* ******************************************* */
+
+int trace_connect_v4_return(struct pt_regs *ctx) {
+  return trace_connect_return(ctx);
+}
+
+/* ******************************************* */
+
+int trace_connect_v6_return(struct pt_regs *ctx) {
+  return trace_connect_return(ctx);
+}
+
+/* ******************************************* */
+
+int trace_tcp_accept(struct pt_regs *ctx) {
+  struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
+
+  if(newsk != NULL) {
+    eBPFevent event = { .ip_version = 4 };
+
+    fill_event(ctx, &event, newsk, NULL, 0, IPPROTO_TCP, 1 /* swap */);
+    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  }
+
+  return(0);
+}
+
+/* *********************** UDP *************************** */
+/* *********************** UDP *************************** */
+/* *********************** UDP *************************** */
+
+/* key is IPs+sport+dport, value = bpf_ktime_get_ns() */
+#define BPF_LRU_HASH3(_name, _key_type, _leaf_type) BPF_TABLE("lru_hash", _key_type, _leaf_type, _name, 10240)
+BPF_LRU_HASH3(udpmsglru, u64, u64);
+
+/* ******************************************* */
+
+static u8 is_cached_entry(eBPFevent *ev) {
+  u64 hash_idx;
+  u64 *when, now;
+
+  /* NOTE: implemented asymmetric hash to make sure we see both flow directions */
+  if(ev->ip_version == 4)
+    hash_idx = ev->event.v4.saddr + (ev->event.v4.daddr >> 8) + ev->event.v4.net.sport +  (ev->event.v4.net.dport >> 2) + ev->proc.pid;
+  else
+    hash_idx = ev->event.v6.saddr + (ev->event.v6.daddr >> 1) + ev->event.v6.net.sport +  (ev->event.v6.net.dport >> 2) + ev->proc.pid;
+
+  when = udpmsglru.lookup(&hash_idx);
+  now = bpf_ktime_get_ns();
+
+  if(when == NULL) {
+    /* not found so not cached */
+
+    udpmsglru.update(&hash_idx, &now);
+    return(0);
+  } else {
+    u64 diff = now - *when;
+
+    if(diff > 1000000000 /* 1 sec */) {
+      /* or it was cached more than one second ago */
+      udpmsglru.update(&hash_idx, &now);
+      return(0);
+    }
+
+    return(1);
+  }
+
+  return(0);
+}
+
+/* ******************************************* */
+/* ******************************************* */
+
+/* https://blog.yadutaf.fr/2017/07/28/tracing-a-packet-journey-using-linux-tracepoints-perf-ebpf/ */
+
+#define ETHERTYPE_IP            0x0800          /* IP */
+#define ETHERTYPE_IPV6          0x86DD          /* IP protocol version 6 */
+#define ETHERTYPE_VLAN          0x8100          /* IEEE 802.1Q VLAN tagging */
+
+#define MAC_HEADER_SIZE 14;
+#define member_address(source_struct, source_member)            \
+    ({                                                          \
+        void* __ret;                                            \
+        __ret = (void*) (((char*)source_struct) + offsetof(typeof(*source_struct), source_member)); \
+        __ret;                                                  \
+    })
+#define member_read(destination, source_struct, source_member)  \
+  do{                                                           \
+    bpf_probe_read(                                             \
+      destination,                                              \
+      sizeof(source_struct->source_member),                     \
+      member_address(source_struct, source_member)              \
+    );                                                          \
+  } while(0)
+
+static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent_packet) {
+  // Compute MAC header address
+  char* head;
+  u16 mac_header;
+  eBPFevent event = { .sent_packet = sent_packet };
+  u8 offset, l4proto, ip_version;
+  char* ip_header_address;
+  struct udphdr *udphdr;
+  u16 eth_proto; 
+  struct net_device *dev;
+
+  member_read(&head,       skb, head);
+  member_read(&mac_header, skb, mac_header);
+
+  head = head + mac_header;
+  
+  bpf_probe_read(&eth_proto, sizeof(u16), &head[12]);
+  
+  // Compute IP Header address
+  ip_header_address = head + MAC_HEADER_SIZE;
+  
+  // Load IP protocol version
+  bpf_probe_read(&ip_version, sizeof(u8), ip_header_address);
+  event.ip_version = ip_version >> 4 & 0xf;
+
+  /* TODO; ADD VLAN support */
+
+  if(eth_proto == htons(ETHERTYPE_IP)) {
+    struct iphdr iphdr;
+
+    event.ip_version = 4;
+    bpf_probe_read(&iphdr, sizeof(iphdr), ip_header_address);
+
+    // Load protocol and address
+    offset = iphdr.ihl * 4;
+
+    l4proto = iphdr.protocol;
+
+    // Discard non UDP traffic
+    if(l4proto != IPPROTO_UDP) return 0;
+    
+    event.event.v4.saddr = iphdr.saddr;
+    event.event.v4.daddr = iphdr.daddr;
+    udphdr = (struct udphdr*)(&ip_header_address[offset]);
+    bpf_probe_read(&event.event.v4.net.sport, sizeof(u16), &udphdr->source);
+    bpf_probe_read(&event.event.v4.net.dport, sizeof(u16), &udphdr->dest);
+    event.event.v4.net.sport = htons(event.event.v4.net.sport);
+    event.event.v4.net.dport = htons(event.event.v4.net.dport);
+  } else if(eth_proto == htons(ETHERTYPE_IPV6)) {
+    // Assume no option header --> fixed size header
+    struct ipv6hdr* ipv6hdr = (struct ipv6hdr*)ip_header_address;
+    
+    event.ip_version = 6;
+    bpf_probe_read(&l4proto,  sizeof(ipv6hdr->nexthdr), (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
+    
+    // Discard non UDP traffic
+    if(l4proto != IPPROTO_UDP) return 0;
+ 
+    bpf_probe_read(&event.event.v6.saddr, sizeof(ipv6hdr->saddr), (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
+    bpf_probe_read(&event.event.v6.daddr, sizeof(ipv6hdr->daddr), (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
+    offset = sizeof(*ipv6hdr);
+    udphdr = (struct udphdr*)(&ip_header_address[offset]);
+    bpf_probe_read(&event.event.v6.net.sport, sizeof(u16), &udphdr->source);
+    bpf_probe_read(&event.event.v6.net.dport, sizeof(u16), &udphdr->dest);
+    event.event.v6.net.sport = htons(event.event.v6.net.sport);
+    event.event.v6.net.dport = htons(event.event.v6.net.dport);
+  } else {
+#if 0
+    event.ip_version = 6;
+    event.event.v6.net.sport = ntohs(eth_proto);
+    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+#endif
+    return(0);
+  }
+    
+  event.event.v4.net.proto = IPPROTO_UDP;
+  event.event.v4.net.latency_usec = 0;
+
+  if(sent_packet)
+    fill_task_info((char*)event.cgroup_id, &event.proc, &event.father);
+  else {
+    event.cgroup_id[0] = '\0';
+    memset(&event.proc, 0, sizeof(event.proc));
+    memset(&event.father, 0, sizeof(event.father));
+  }
+
+  member_read(&dev, skb, dev);
+  bpf_probe_read(&event.ifname, IFNAMSIZ, dev->name);
+   
+  if(!is_cached_entry(&event))
+    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+
+  return 0;
+}
+
+/* ******************************************* */
+
+static void fill_ifname(eBPFevent *ev, struct sock *sk) {
+  struct net_device *dev;
+  struct dst_entry *dst;
+  
+  member_read(&dst, sk, sk_dst_cache);
+  member_read(&dev, dst, dev);
+  bpf_probe_read(&ev->ifname, IFNAMSIZ, dev->name);
+}
+
+/* ******************************************* */
+
+/**
+ * Attach to Kernel Tracepoints
+ */
+/*
+  cat /sys/kernel/debug/tracing/events/net/netif_rx/format
+
+  field:unsigned short common_type;offset:0;size:2;signed:0;
+  field:unsigned char common_flags;offset:2;size:1;signed:0;
+  field:unsigned char common_preempt_count;offset:3;size:1;signed:0;
+  field:int common_pid;offset:4;size:4;signed:1;
+
+  field:void * skbaddr;offset:8;size:8;signed:0;
+  field:unsigned int len;offset:16;size:4;signed:0;
+  field:__data_loc char[] name;offset:20;size:4;signed:1;
+
+*/
+struct netif_rx_read_args {
+  u64 __unused__;
+  void * skbaddr;
+  u_int16_t len;
+  char name[];
+};
+
+/*
+  cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_bind/format 
+
+  field:int __syscall_nr;offset:8;size:4;signed:1;
+  field:int fd;offset:16;size:8;signed:0;
+  field:struct sockaddr * umyaddr;offset:24;size:8;signed:0;
+  field:int addrlen;offset:32;size:8;signed:0;
+*/
+struct sys_bind_args {
+  u64 __unused__;
+  int __syscall_nr;
+  int fd;
+  struct sockaddr *umyaddr;
+  int addrlen;
+};
+
+/*
+ * When a packet is received the skb has not yet hit the system and thus
+ * we don't know (yet) the process that will handle it
+ */
+int trace_netif_rx_entry(struct netif_rx_read_args *args) {
+  return udp_packet_trace(args, (struct sk_buff*)(args->skbaddr), 0);
+}
+
+int trace_netif_tx_entry(struct netif_rx_read_args *args) {
+  return udp_packet_trace(args, (struct sk_buff*)(args->skbaddr), 1);
+}
+
+#if 0
+int trace_bind(struct sys_bind_args *args) {
+  if(args->addrlen == sizeof(struct sockaddr_in)) {
+    /* TODO */
+  }
+
+  return(0);
+}
+#endif
+
+int trace_receive_v4(struct pt_regs *ctx, struct sock *sk) {
+  eBPFevent event = { .ip_version = 4 };
+
+  if(fill_event(ctx, &event, sk, NULL, bpf_ktime_get_ns(), IPPROTO_UDP, 0 /* don't swap */) == 0)
+    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  
+  return(0);
+}
