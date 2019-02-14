@@ -391,9 +391,9 @@ static u8 is_cached_entry(eBPFevent *ev) {
 
   /* NOTE: implemented asymmetric hash to make sure we see both flow directions */
   if(ev->ip_version == 4)
-    hash_idx = ev->event.v4.saddr + (ev->event.v4.daddr >> 8) + ev->event.v4.net.sport +  (ev->event.v4.net.dport >> 2) + ev->proc.pid;
+    hash_idx = ev->event.v4.saddr + ev->event.v4.daddr + ev->event.v4.net.sport + ev->event.v4.net.dport + ev->proc.pid;
   else
-    hash_idx = ev->event.v6.saddr + (ev->event.v6.daddr >> 1) + ev->event.v6.net.sport +  (ev->event.v6.net.dport >> 2) + ev->proc.pid;
+    hash_idx = ev->event.v6.saddr + ev->event.v6.daddr + ev->event.v6.net.sport + ev->event.v6.net.dport + ev->proc.pid;
 
   when = udpmsglru.lookup(&hash_idx);
   now = bpf_ktime_get_ns();
@@ -601,16 +601,6 @@ int trace_netif_rx_entry(struct netif_rx_read_args *args) {
 int trace_netif_tx_entry(struct netif_rx_read_args *args) {
   return udp_packet_trace(args, (struct sk_buff*)(args->skbaddr), 1);
 }
-
-#if 0
-int trace_bind(struct sys_bind_args *args) {
-  if(args->addrlen == sizeof(struct sockaddr_in)) {
-    /* TODO */
-  }
-
-  return(0);
-}
-#endif
 
 int trace_receive_v4(struct pt_regs *ctx, struct sock *sk) {
   eBPFevent event = { .ip_version = 4 };
