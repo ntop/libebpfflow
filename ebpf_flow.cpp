@@ -135,7 +135,6 @@ extern "C" {
 
     // attaching probes ----- //
     if(
-#if 1
        /* TCP */
        attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
        || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
@@ -146,12 +145,6 @@ extern "C" {
        /* UDP */
        || attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry")
        || attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry")
-#else
-       attachEBPFKernelProbe(bpf, "udp_recvmsg",   "trace_receive_v4",        BPF_PROBE_RETURN)
-       || attachEBPFTracepoint(bpf, "syscalls:sys_enter_recvfrom", "trace_recvfrom")
-       //|| attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry")
-       // || attachEBPFKernelProbe(bpf, "udpv6_recvmsg", "trace_receive_v6",        BPF_PROBE_RETURN)
-#endif
        ) {
       *rc = ebpf_kprobe_attach_error;
       goto init_failed;
