@@ -1,0 +1,4 @@
+*.o
+*.a
+ebpflow.ebpf.enc
+ebpftest
