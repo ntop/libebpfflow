@@ -20,6 +20,8 @@
 
 #include "ebpf_flow.h"
 
+#include "config.h"
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -97,7 +99,7 @@ static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const ch
 static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 				 const char *entry_point, bpf_probe_attach_type attach_type) {
   int rc = bpf->attach_kprobe(queue_name, entry_point,
-#ifdef NEW_EBF
+#ifdef HAVE_NEW_EBPF
 			      0,
 #endif
 			      attach_type).code();
