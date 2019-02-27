@@ -115,7 +115,7 @@ extern "C" {
   void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags=0xffff);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag);
+  void ebpf_preprocess_event(eBPFevent *event, bool docker_flag);
   const char* ebpf_print_error(ebpfRetCode rc);
   void ebpf_free_event(eBPFevent *event);
   const char* ebpf_flow_version();
