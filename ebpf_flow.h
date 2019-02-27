@@ -100,6 +100,14 @@ typedef enum {
   ebpf_events_open_error,
 } ebpfRetCode;
 
+typedef enum {
+  TCP = 1 << 0,
+  UDP = 1 << 1,
+  INCOME = 1 << 2,
+  OUTCOME = 1 << 3,
+} libebpflow_flag;
+
+
 /* ******************************************* */
 
 #ifdef __cplusplus
@@ -108,7 +116,7 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags=0xffff);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
   void ebpf_preprocess_event(eBPFevent *event, int docker_flag);

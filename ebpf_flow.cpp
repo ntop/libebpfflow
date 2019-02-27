@@ -114,7 +114,7 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 /* ******************************************* */
 
 extern "C" {
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc) {
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
@@ -139,20 +139,36 @@ extern "C" {
     }
 
     // attaching probes ----- //
-    if(
-       /* TCP */
-       attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-       || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-       || attachEBPFKernelProbe(bpf, "tcp_v4_connect",  "trace_connect_v4_return", BPF_PROBE_RETURN)
-       || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_v6_return", BPF_PROBE_RETURN)
-       || attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept",        BPF_PROBE_RETURN)
-
-       /* UDP */
-       || attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry")
-       || attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry")
-       ) {
+    if ((flags & TCP) && (flags & OUTCOME)) {
+      if (attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v4_connect",  "trace_connect_v4_return", BPF_PROBE_RETURN)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_v6_return", BPF_PROBE_RETURN)) 
+      {
       *rc = ebpf_kprobe_attach_error;
       goto init_failed;
+      }
+    }
+    if ((flags & TCP) && (flags & INCOME)) {
+      if (attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept",        BPF_PROBE_RETURN))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if ((flags & UDP) && (flags & OUTCOME)) {
+      if (attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry"))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if ((flags & UDP) && (flags & INCOME)) {
+      if (attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry"))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
     }
 
     // opening output buffer ----- //

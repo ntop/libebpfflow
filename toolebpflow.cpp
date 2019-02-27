@@ -62,31 +62,23 @@ int main(int argc, char **argv) {
 
   // Argument Parsing ----- //
   int ch;
-  int userarg_tcp=0, userarg_udp=0;
-  int userarg_einput=0, userarg_eoutput=0;
-  int userarg_retr=0, userarg_tcpclose=0;
+  short flags = 0;
   gDOCKER_ENABLE=0;
   while ((ch = getopt_long(argc, argv,
 				                  "rcutiodh",
                           long_opts, NULL)) != EOF) {
       switch (ch) {
-        case 'r':
-          userarg_retr=1;
-          break;
-        case 'c': 
-          userarg_tcpclose=1;
-          break;
         case 'u':
-          userarg_udp=1;
+          flags += UDP;
           break;
         case 't':
-          userarg_tcp=1;
+          flags += TCP;
           break;
         case 'i':
-          userarg_einput=1;
+          flags += INCOME;
           break;
         case 'o':
-          userarg_eoutput=1; 
+          flags += OUTCOME; 
           break;
         case 'd': 
           gDOCKER_ENABLE=1;        
@@ -96,11 +88,16 @@ int main(int argc, char **argv) {
           return 0;
     }
   }
-  if (argc==1) {  
-      userarg_tcp=1; userarg_udp=1;
-      userarg_einput=1; userarg_eoutput=1;
-      userarg_retr=1; userarg_tcpclose=1; 
-  }   
+  // Setting defaults
+  if (argc==1) {
+    flags = 0xffff;
+  }
+  if (flags == TCP) {
+    flags = TCP + INCOME + OUTCOME;
+  }
+  if (flags == UDP) {
+    flags = UDP + INCOME + OUTCOME;
+  }
 
   // Checking root ----- //
   if (getuid() != 0) {
@@ -119,7 +116,7 @@ int main(int argc, char **argv) {
    "Legacy API"
 #endif
    );
-  ebpf = init_ebpf_flow(NULL, HandleEvent, &rc);
+  ebpf = init_ebpf_flow(NULL, HandleEvent, &rc, flags);
 
   if(!ebpf) {
     printf("Unable to initialize libebpfflow: %s\n", ebpf_print_error(rc));
@@ -229,7 +226,7 @@ static void HandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent event;
   // Copy needed as ebpf_preprocess_event will modify the memory
   memcpy(&event, e, sizeof(eBPFevent)); 
-  ebpf_preprocess_event(&event, 1);
+  ebpf_preprocess_event(&event, gDOCKER_ENABLE);
 
   // Event info ----- //
   printf("[ktime: %lu]", (long unsigned int)(event.ktime / 100000));
