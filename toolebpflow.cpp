@@ -264,8 +264,8 @@ static void HandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
       intoaV4(htonl(ipv4_event->saddr), buf1, sizeof(buf1)), ipv4_event->net.sport,
       intoaV4(htonl(ipv4_event->daddr), buf2, sizeof(buf2)), ipv4_event->net.dport);
     // IPv4 Latency if available
-    if(ipv6_event->net.proto == IPPROTO_TCP)
-      printf("[latency: %.2f msec]", ((float)event->net.latency_usec)/(float)1000);
+    if(ipv4_event->net.proto == IPPROTO_TCP)
+      printf("\t [latency: %.2f msec] (netstat) \n", ((float)ipv4_event->net.latency_usec)/(float)1000);
   }
   else {
     // IPv6 Event type
@@ -274,13 +274,13 @@ static void HandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
       event_type_str, sizeof(event_type_str));
     // IPv6 Network info
     char buf1[128], buf2[128];
-    printf("\t [%s][addr: %s:%d <-> %s:%d] (net)\n",
+    printf("\t [%s][addr: %s:%d <-> %s:%d] (net) \n",
       event_type_str,
       intoaV6(htonl(ipv6_event->saddr), buf1, sizeof(buf1)), ipv6_event->net.sport,
       intoaV6(htonl(ipv6_event->daddr), buf2, sizeof(buf2)), ipv6_event->net.dport);
     // IPv6 Latency if available
     if(ipv6_event->net.proto == IPPROTO_TCP)
-      printf("[latency: %.2f msec]", ((float)event->net.latency_usec)/(float)1000);
+      printf("\t [latency: %.2f msec] (netstat) \n", ((float)ipv6_event->net.latency_usec)/(float)1000);
   }
 
   // Container ----- //

@@ -30,7 +30,7 @@ LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
 
 all: ebpftest
 
-libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker-api.hpp ebpflow.ebpf.enc
+libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.hpp ebpflow.ebpf.enc
 	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
 	ar rvs $@ ebpf_flow.o
 
