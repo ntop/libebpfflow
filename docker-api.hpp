@@ -98,12 +98,9 @@ int parse_response (char* buff, int buffsize, docker_api **res) {
   // Docker name
   if (json_object_object_get_ex(jobj, "Name", &jdockername)) {
     strcpy(dqr->docker_name, json_object_get_string(jdockername)+1);
-    printf("\n>%s\n", json_object_get_string(jdockername));
   }
-  else {
-    printf("\n%s\n", json_object_get_string(jobj));
-    return -1;
-  }
+  else return -1;
+  
 
   // Checking kube info 
   if (json_object_object_get_ex(jobj, "Config", &jconfig) && 

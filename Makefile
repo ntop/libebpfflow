@@ -37,6 +37,9 @@ libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker-api.hpp ebpflow.ebpf.enc
 ebpftest: ebpftest.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) ebpftest.cpp -o $@ libebpfflow.a $(LIBS)
 
+toolebpflow: toolebpflow.cpp libebpfflow.a Makefile
+	g++ $(CFLAGS) toolebpflow.cpp -o $@ libebpfflow.a $(LIBS)
+
 ebpflow.ebpf.enc: ebpflow.ebpf Makefile
 	echo -n "const char * ebpf_code = R\"(" > ebpflow.ebpf.enc
 	base64 -w 0 ebpflow.ebpf >> ebpflow.ebpf.enc
