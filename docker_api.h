@@ -178,7 +178,7 @@ int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr) {
 
   // Checking for errors
   if(res != CURLE_OK) {
-    fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+    fprintf(stderr, "curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
     return -1;
   }
   
@@ -256,15 +256,18 @@ void clean_cache () {
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
+  docker_api* qr;
+  
   if (difftime(now, last) > 5) {
     clean_cache();
     last = now;
   }
 
-  if (strcmp(t_cgroupid, "") == 0) return -1; 
+  if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0))
+    return -1; 
   
   std::string cgroupid(t_cgroupid);
-  docker_api* qr;
+
   // Checking if the query has been cached. If not then try to update the cache
   if (docker_id_cached(cgroupid, &qr) != 0 && update_query_cache(t_cgroupid, &qr) != 0)  {
     return -1;
