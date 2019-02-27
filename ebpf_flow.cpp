@@ -18,10 +18,10 @@
  *
  */
 
-#include "ebpf_flow.h"
-#include "docker_api.hpp"
-
 #include "config.h"
+
+#include "ebpf_flow.h"
+#include "docker_api.h"
 
 #include <fstream>
 #include <iostream>
