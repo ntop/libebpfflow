@@ -30,7 +30,9 @@
 /* ******************************************* */
 
 #define EBPF_FLOW_VERSION "1.0.190213"
-  
+
+#define HAVE_NEW_EBPF
+
 #define COMMAND_LEN       16
 #define CGROUP_ID_LEN     64
 
@@ -62,6 +64,15 @@ struct ipv6_kernel_data {
   struct netInfo net;
 };
 
+struct dockerInfo {
+  char dname[100];
+};
+
+struct kubeInfo {
+  char pod[60];
+  char ns[60];
+};
+
 typedef struct {
   __u64 ktime;
   char ifname[IFNAMSIZ];
@@ -76,6 +87,8 @@ typedef struct {
   struct taskInfo proc, father;
 
   char cgroup_id[CGROUP_ID_LEN];
+  struct dockerInfo *docker;
+  struct kubeInfo *kube;
 } eBPFevent;
 
 typedef enum {
@@ -87,6 +100,14 @@ typedef enum {
   ebpf_events_open_error,
 } ebpfRetCode;
 
+typedef enum {
+  TCP = 1 << 0,
+  UDP = 1 << 1,
+  INCOME = 1 << 2,
+  OUTCOME = 1 << 3,
+} libebpflow_flag;
+
+
 /* ******************************************* */
 
 #ifdef __cplusplus
@@ -95,10 +116,10 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags=0xffff);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
-  void ebpf_preprocess_event(eBPFevent *event);
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag);
   const char* ebpf_print_error(ebpfRetCode rc);
   void ebpf_free_event(eBPFevent *event);
   const char* ebpf_flow_version();

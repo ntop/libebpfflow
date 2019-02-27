@@ -19,6 +19,7 @@
  */
 
 #include "ebpf_flow.h"
+#include "docker_api.hpp"
 
 #include "config.h"
 
@@ -113,10 +114,12 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 /* ******************************************* */
 
 extern "C" {
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc) {
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
+
+    docker_api_init();
 
     if(code == "") {
       *rc = ebpf_unable_to_load_kernel_probe;
@@ -136,20 +139,36 @@ extern "C" {
     }
 
     // attaching probes ----- //
-    if(
-       /* TCP */
-       attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-       || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-       || attachEBPFKernelProbe(bpf, "tcp_v4_connect",  "trace_connect_v4_return", BPF_PROBE_RETURN)
-       || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_v6_return", BPF_PROBE_RETURN)
-       || attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept",        BPF_PROBE_RETURN)
-
-       /* UDP */
-       || attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry")
-       || attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry")
-       ) {
+    if ((flags & TCP) && (flags & OUTCOME)) {
+      if (attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v4_connect",  "trace_connect_v4_return", BPF_PROBE_RETURN)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_v6_return", BPF_PROBE_RETURN)) 
+      {
       *rc = ebpf_kprobe_attach_error;
       goto init_failed;
+      }
+    }
+    if ((flags & TCP) && (flags & INCOME)) {
+      if (attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept",        BPF_PROBE_RETURN))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if ((flags & UDP) && (flags & OUTCOME)) {
+      if (attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry"))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if ((flags & UDP) && (flags & INCOME)) {
+      if (attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry"))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
     }
 
     // opening output buffer ----- //
@@ -161,6 +180,7 @@ extern "C" {
 
   init_failed:
     if(bpf) delete bpf;
+    docker_api_clean();
     return(NULL);
   };
 
@@ -192,11 +212,11 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_preprocess_event(eBPFevent *event) {
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag) {
     char what[256], sym[256] = { '\0' };
     char fwhat[256], fsym[256] = { '\0' };
     int l;
-
+    
     gettimeofday(&event->event_time, NULL);
     check_pid(&event->proc), check_pid(&event->father);
 
@@ -204,8 +224,8 @@ extern "C" {
     if(event->proc.pid != 0) {
       snprintf(what, sizeof(what), "/proc/%u/exe", event->proc.pid);
       if((l = readlink(what, sym, sizeof(sym))) != -1) {
-	sym[l] = '\0';
-	event->proc.full_task_path = strdup(sym);
+        sym[l] = '\0';
+        event->proc.full_task_path = strdup(sym);
       }
     }
 
@@ -213,8 +233,27 @@ extern "C" {
     if(event->father.pid != 0) {
       snprintf(what, sizeof(what), "/proc/%u/exe", event->father.pid);
       if((l = readlink(what, sym, sizeof(sym))) != -1) {
-	sym[l] = '\0';
-	event->father.full_task_path = strdup(sym);
+        sym[l] = '\0';
+        event->father.full_task_path = strdup(sym);
+      }
+    }
+
+    // Attaching docker container info
+    event->docker = NULL;
+    event->kube = NULL;
+    if (docker_flag) {
+      struct docker_api *container_info;
+      int res = docker_id_get(event->cgroup_id, &container_info);
+      if (res >= 0) /* Docker info available */ { 
+        struct dockerInfo *d = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
+        strcpy(d->dname, container_info->docker_name);
+        event->docker = d;
+      }
+      if (res >= 1) /* Kubernetes info available */ {
+        struct kubeInfo *k = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
+        strcpy(k->pod, container_info->kube_pod);
+        strcpy(k->ns, container_info->kube_namespace);
+        event->kube = k;
       }
     }
   }
@@ -227,12 +266,19 @@ extern "C" {
 
     if(event->father.full_task_path != NULL)
       free(event->father.full_task_path);
+
+    if (event->docker != NULL) 
+      free(event->docker);
+
+    if (event->kube != NULL) 
+      free(event->kube);
   }
 
   /* ******************************************* */
 
   void term_ebpf_flow(void *ebpfHook) {
     ebpf::BPF *bpf = (ebpf::BPF*)ebpfHook;
+    docker_api_clean();
 
     delete bpf;
   }
