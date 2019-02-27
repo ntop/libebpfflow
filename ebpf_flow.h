@@ -29,10 +29,6 @@
 
 /* ******************************************* */
 
-#define EBPF_FLOW_VERSION "1.0.190213"
-
-#define HAVE_NEW_EBPF
-
 #define COMMAND_LEN       16
 #define CGROUP_ID_LEN     64
 
