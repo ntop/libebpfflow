@@ -5,17 +5,18 @@ dnl> Do not add anything above
 AC_PROG_CPP
 AC_PROG_CXX
 
-AC_MSG_CHECKING([eBPF library new API version])
-AC_TRY_RUN([
-#include <pthread.h>
+# Use C++ language for tests
+AC_LANG(C++)
 
-int main() {
-	ebpf::BPF *bpf;
- 	bpf->attach_kprobe((const char*)"", NULL, 0, 0:
-        return 0;
-}
-], [ AC_MSG_RESULT(yes) AC_DEFINE_UNQUOTED(HAVE_NEW_EBPF, 1, [new BPF API]) ], [AC_MSG_RESULT(no)]
-)
+# Libs required for compilation test below
+LIBS="${LIBS} -lbcc"
+
+AC_MSG_CHECKING([eBPF library new API version])
+AC_TRY_COMPILE([
+#include <bcc/BPF.h>
+], [ ebpf::BPF *bpf;
+	bpf->attach_kprobe((const char*)"", NULL, 0, BPF_PROBE_ENTRY);
+], [ AC_MSG_RESULT(yes) AC_DEFINE_UNQUOTED(HAVE_NEW_EBPF, 1, [new BPF API]) ], [AC_MSG_RESULT(no)])
 
 DATE=`date +"%Y-%m-%d"`
 VERSION="1.0.${DATE}"
