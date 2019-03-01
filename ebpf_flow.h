@@ -112,7 +112,8 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags=0xffff);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler,
+		       ebpfRetCode *rc, u_int16_t flags /* Use 0xFFFF for default */);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
   void ebpf_preprocess_event(eBPFevent *event, bool docker_flag);

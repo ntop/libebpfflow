@@ -171,7 +171,7 @@ int main(int argc, char *argv[]) {
 	 "Legacy API"
 #endif
 	 );
-  ebpf = init_ebpf_flow(NULL, ebpfHandler, &rc);
+  ebpf = init_ebpf_flow(NULL, ebpfHandler, &rc, 0xFFFF);
 
   if(!ebpf) {
     printf("Unable to initialize libebpfflow: %s\n", ebpf_print_error(rc));

@@ -114,7 +114,7 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 /* ******************************************* */
 
 extern "C" {
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags) {
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, u_int16_t flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
