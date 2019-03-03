@@ -38,15 +38,16 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize);
 // ===== ===== MAIN ===== ===== //
 /* **************************** */
 static const struct option long_opts[] = {
-	{ "retr", 0, 0, 'r' },
-	{ "tcpclose", 0, 0, 'c' },
-	{ "udp", 0, 0, 'u' }, 
-	{ "tcp", 0, 0, 't' },
+	{ "retr", 0, NULL, 'r' },
+	{ "tcpclose", 0, NULL, 'c' },
+	{ "udp", 0, NULL, 'u' }, 
+	{ "tcp", 0, NULL, 't' },
 	{ "in", 0, 0, 'i' },
 	{ "out", 0, 0, 'o' },
-	{ "docker", 0, 0, 'd' },
-  { "help", 0, 0, 'h' },
-  { "verbose", 0, 0, 'v' }
+	{ "docker", 0, NULL, 'd' },
+  { "help", 0, NULL, 'h' },
+  { "verbose", 0, 0, 'v' },
+  { NULL, 0, NULL, 0 }
 };
 
 int main(int argc, char **argv) { 

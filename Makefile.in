@@ -28,7 +28,7 @@ CFLAGS=-g $(JSON_INC) $(LIBCURL_INC)
 LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
 
 
-all: ebpftest
+all: toolebpflow
 
 docker_api.o: docker_api.cpp docker_api.h
 	g++ -c $(CFLAGS) docker_api.cpp -o docker_api.o
@@ -36,9 +36,6 @@ docker_api.o: docker_api.cpp docker_api.h
 libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.o ebpflow.ebpf.enc
 	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
 	ar rvs $@ ebpf_flow.o docker_api.o
-
-ebpftest: ebpftest.cpp libebpfflow.a Makefile
-	g++ $(CFLAGS) ebpftest.cpp -o $@ libebpfflow.a $(LIBS)
 
 toolebpflow: toolebpflow.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) toolebpflow.cpp -o $@ libebpfflow.a $(LIBS)

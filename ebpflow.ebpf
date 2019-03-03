@@ -410,8 +410,8 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 /* ******************************************* */
 
 // Fired when the state changes and check if the state is CLOSE
-int trace_tcp_close(struct pt_regs *ctx, struct sock *sk, int state) {
-  if (state!=BPF_TCP_CLOSE) return 0;
+int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
+  if (state!=BPF_TCP_CLOSE && state!=EINPROGRESS) return 0;
   
   eBPFevent event = { .etype = eTCP_CLOSE };
   
