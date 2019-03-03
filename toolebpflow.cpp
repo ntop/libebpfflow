@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
     }
   }
   // Setting defaults
-  if (argc==1) {
+  if (flags==0) {
     flags = 0xffff;
   }
   if (!(flags & INCOME) && !(flags & OUTCOME)) {
