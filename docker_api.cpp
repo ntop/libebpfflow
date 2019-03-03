@@ -36,22 +36,29 @@
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
 // Cache where to store the queries results
-std::unordered_map<std::string, struct docker_api*> *gQueryCache = nullptr;
+std::unordered_map<std::string, struct cache_entry*> *gQueryCache = nullptr;
 
 
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
 /* ************************************************* */
 void docker_api_init () {
-  gQueryCache = new std::unordered_map<std::string, struct docker_api*>; 
+  gQueryCache = new std::unordered_map<std::string, struct cache_entry*>; 
+}
+
+void clean_cache_entry (struct cache_entry *e) {
+  if (e->value != nullptr) {
+    free(e->value);
+  }
+  free(e);
 }
 
 void docker_api_clean () {
   if (gQueryCache==nullptr) return;
 
-  std::unordered_map<std::string, struct docker_api*>::iterator it; 
+  std::unordered_map<std::string, struct cache_entry*>::iterator it; 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) { 
-    free(it->second);
+    clean_cache_entry(it->second);
   }
   delete gQueryCache;
   gQueryCache = nullptr;
@@ -86,13 +93,16 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp)
  *   the docker daemon
  * return 0 if no error occurred -1 otherwise 
  */
-int parse_response (char* buff, int buffsize, docker_api **res) { 
+int parse_response (char* buff, int buffsize, cache_entry **res) { 
   struct json_object *jobj, *jdockername, *jconfig, *jlabel, *jpodname, *jkubens;
   struct json_tokener *jtok;
-  struct docker_api* dqr;
+  struct cache_entry *entry;
+  struct docker_api *dqr;
 
-  // Creating the docker api heap data structure
+  // Creating cache entry
+  entry = (struct cache_entry *) malloc(sizeof(struct cache_entry));
   dqr = (struct docker_api *) malloc(sizeof(struct docker_api));
+  entry->value = dqr;
   dqr->kube = 0;
 
   // Parsing req to json
@@ -102,14 +112,14 @@ int parse_response (char* buff, int buffsize, docker_api **res) {
   json_tokener_free(jtok);
 
   if (jobj == NULL) {
-    return -1;
+    goto fail;
   };
 
   // Docker name
   if (json_object_object_get_ex(jobj, "Name", &jdockername)) {
     strcpy(dqr->docker_name, json_object_get_string(jdockername)+1);
   }
-  else return -1;
+  else goto fail;
   
 
   // Checking kube info 
@@ -128,8 +138,13 @@ int parse_response (char* buff, int buffsize, docker_api **res) {
   }
 
   json_object_put(jobj);
-  *res = dqr;
-  return 0;  
+  *res = entry;
+  return 0;
+
+fail:
+  free(dqr);
+  entry->value = nullptr;
+  return -1;
 }
 
 /* 
@@ -140,7 +155,7 @@ int parse_response (char* buff, int buffsize, docker_api **res) {
  * note: the same operation can be done using 
  *       `$ curl --unix-socket /var/run/docker.sock http://localhost/containers/<container-id>/json`
  */
-int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr) {
+int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURL *curl_handle;
   CURLcode res;
   char url[101];
@@ -169,10 +184,9 @@ int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr) {
     return -1;
   }
   
-  docker_api *dqr;
-  if(parse_response(chunk.memory, chunk.size, &dqr) != 0) { 
-    return -1;
-  }
+  cache_entry *dqr;
+  parse_response(chunk.memory, chunk.size, &dqr);
+
   std::string cgroupid(t_cgroupid);
   // Setting accessed times to zero
   dqr->accessed = 0;
@@ -194,10 +208,11 @@ int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr) {
  * docker_id_cached - check if containers info have been cached
  * returns -1 if the query has not been cached 0 otherwise
  */
-int docker_id_cached (std::string t_cgroupid, struct docker_api **t_dqs) {
-  auto res = gQueryCache->find(t_cgroupid);
+int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
+  std::unordered_map<std::string, struct cache_entry*>::iterator res;  
+  res = gQueryCache->find(t_cgroupid);
 
-  if (res != gQueryCache->end()) {
+  if (res != gQueryCache->end() && res->second->value != nullptr) {
     res->second->accessed += 1;
     *t_dqs = res->second;
     return 0;
@@ -209,15 +224,16 @@ int docker_id_cached (std::string t_cgroupid, struct docker_api **t_dqs) {
 void clean_cache () {
   std::vector<std::string> markedentries;
   std::vector<std::string>::iterator marked_it;
-  std::unordered_map<std::string, struct docker_api*>::iterator it;
+  std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
   if (gQueryCache==nullptr) return;
 
   // Getting entries accessed less than MINTOCLEAN times 
-  for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) { 
-    if (it->second->accessed < MINTOCLEAN) {
+  for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
+    struct cache_entry *entry = it->second; 
+    if (entry->accessed < MINTOCLEAN || entry->value==nullptr) {
       markedentries.push_back(it->first);
-      free(it->second);
+      clean_cache_entry(it->second);
     }
     else {
       it->second->accessed = 0;
@@ -241,7 +257,7 @@ void clean_cache () {
  * returns 1 if kubernetes informations have been found
  */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
-  docker_api* qr;
+  cache_entry* qr;
   
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
@@ -260,7 +276,7 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
     return -1;
   }
   // No error occurred
-  *t_dqr = qr;
-  return qr->kube;
+  *t_dqr = qr->value;
+  return (*t_dqr)->kube;
 } 
 

@@ -34,8 +34,12 @@
 #define CLEAN_INTERVAL 5
 
 
-struct docker_api {
+struct cache_entry {
   int accessed;
+  struct docker_api *value;
+};
+
+struct docker_api {
   char docker_name[100];
   int kube; // 1 if kubernetes info are available
   char kube_pod[60];
@@ -76,7 +80,7 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp);
  *   the docker daemon
  * return 0 if no error occurred -1 otherwise 
  */
-int parse_response (char* buff, int buffsize, docker_api **res);
+int parse_response (char* buff, int buffsize, cache_entry **res);
 
 /* 
  * update_query_cache - query to docker api from docker socket (/var/run/docker.sock) and caches the result.
@@ -86,7 +90,7 @@ int parse_response (char* buff, int buffsize, docker_api **res);
  * note: the same operation can be done using 
  *       `$ curl --unix-socket /var/run/docker.sock http://localhost/containers/<container-id>/json`
  */
-int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr);
+int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr);
 
 
 /* *********************************** */
@@ -96,7 +100,7 @@ int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr);
  * docker_id_cached - check if containers info have been cached
  * returns -1 if the query has not been cached 0 otherwise
  */
-int docker_id_cached (std::string t_cgroupid, struct docker_api **t_dqs);
+int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs);
 
 /*
  * Clean the cache from queries far back in time
