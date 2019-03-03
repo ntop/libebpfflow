@@ -50,7 +50,7 @@ BPF_LRU_HASH3(retr_table, u32, struct retr_entry);
 
 #define CGROUP_ID_LEN 64 // max is in limits.h -> NAME_MAX
 
-#define COMMAND_LEN  18
+#define COMMAND_LEN TASK_COMM_LEN+1 // 16, defined in sched.h
 
 /*
  * Events types are forged as follows:

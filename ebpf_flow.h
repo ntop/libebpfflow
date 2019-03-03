@@ -29,7 +29,7 @@
 
 /* ******************************************* */
 
-#define COMMAND_LEN       18
+#define COMMAND_LEN       17
 #define CGROUP_ID_LEN     64
 
 /*
