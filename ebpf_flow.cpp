@@ -18,10 +18,10 @@
  *
  */
 
+#include "config.h"
+
 #include "ebpf_flow.h"
 #include "docker_api.h"
-
-#include "config.h"
 
 #include <fstream>
 #include <iostream>
@@ -114,7 +114,7 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 /* ******************************************* */
 
 extern "C" {
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, __u16 flags) {
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, u_int16_t flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
@@ -226,7 +226,7 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag) {
+  void ebpf_preprocess_event(eBPFevent *event, bool docker_flag) {
     char what[256], sym[256] = { '\0' };
     char fwhat[256], fsym[256] = { '\0' };
     int l;

@@ -29,10 +29,6 @@
 
 /* ******************************************* */
 
-#define EBPF_FLOW_VERSION "1.0.190213"
-
-#define HAVE_NEW_EBPF
-
 #define COMMAND_LEN       16
 #define CGROUP_ID_LEN     64
 
@@ -138,10 +134,11 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, __u16 flags=0xffff);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, 
+    ebpfRetCode *rc, u_int16_t flags=0xffff  /* Use 0xFFFF for default */);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag);
+  void ebpf_preprocess_event(eBPFevent *event, bool docker_flag);
   const char* ebpf_print_error(ebpfRetCode rc);
   void ebpf_free_event(eBPFevent *event);
   const char* ebpf_flow_version();

@@ -1,3 +1,23 @@
+/*
+ *
+ * (C) 2018-19 - ntop.org
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *
+ */
+
 #include <unistd.h>
 #include <signal.h>
 #include <arpa/inet.h>
@@ -50,7 +70,7 @@ static const struct option long_opts[] = {
   { NULL, 0, NULL, 0 }
 };
 
-int main(int argc, char **argv) { 
+int main(int argc, char **argv) {
   ebpfRetCode rc;
   void *ebpf;
   void (*handler)(void*, void*, int) = ebpfHandler;
@@ -104,21 +124,22 @@ int main(int argc, char **argv) {
 
   // Checking root ----- //
   if (getuid() != 0) {
-    printf("Please run as root user \n");  
+    printf("Please run as root user \n");
+    help();
     return 0;
   }
 
-  printf("Welcome to toolebpflow v.%s\n(C) 2018-19 ntop.org\n", 
-   ebpf_flow_version());
+  printf("Welcome to toolebpflow v.%s\n(C) 2018-19 ntop.org\n",
+	 ebpf_flow_version());
 
   // Activating libebpflow ----- //
   printf("Initializing eBPF [%s]...\n",
 #ifdef NEW_EBF
-   "New API"
+	 "New API"
 #else
-   "Legacy API"
+	 "Legacy API"
 #endif
-   );
+  );
   ebpf = init_ebpf_flow(NULL, handler, &rc, flags);
 
   if(!ebpf) {
@@ -230,7 +251,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   // Preprocessing event ----- //
   eBPFevent event;
   // Copy needed as ebpf_preprocess_event will modify the memory
-  memcpy(&event, e, sizeof(eBPFevent)); 
+  memcpy(&event, e, sizeof(eBPFevent));
   ebpf_preprocess_event(&event, gDOCKER_ENABLE);
 
   // Event info ----- //
@@ -238,19 +259,19 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
 
   // Task ----- //
   printf("[pid: %lu][uid: %lu][gid: %lu][%s] (task)\n",
-    (long unsigned int)event.proc.gid,
-    (long unsigned int)event.proc.uid,
-    (long unsigned int)event.proc.pid,
-    event.proc.task
-  );
+	 (long unsigned int)event.proc.gid,
+	 (long unsigned int)event.proc.uid,
+	 (long unsigned int)event.proc.pid,
+	 event.proc.task
+	 );
 
   // Parent ----- //
   printf("\t [pid: %lu][uid: %lu][gid: %lu][%s] (parent)\n",
-    (long unsigned int)event.father.gid,
-    (long unsigned int)event.father.uid,
-    (long unsigned int)event.father.pid,
-    event.father.task
-  );
+	 (long unsigned int)event.father.gid,
+	 (long unsigned int)event.father.uid,
+	 (long unsigned int)event.father.pid,
+	 event.father.task
+	 );
 
   // Network basic ----- //
   event_summary(&event, event_type_str, sizeof(event_type_str));
@@ -287,7 +308,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
 
   // Container ----- //
   if (event.docker != NULL) printf("\t [docker: %.12s/%s] (docker)\n", event.cgroup_id, event.docker->dname);
-  if (event.kube !=  NULL) printf("\t [kube pod/ns: %s/%s] (kubernetes)\n", event.kube->pod, event.kube->ns);  
+  if (event.kube !=  NULL) printf("\t [kube pod/ns: %s/%s] (kubernetes)\n", event.kube->pod, event.kube->ns);
 
   ebpf_free_event(&event);
 }
@@ -379,4 +400,3 @@ static void handleTermination(int t_s) {
   printf("\r* Terminating * \n");
   gRUNNING = 0;
 }
-

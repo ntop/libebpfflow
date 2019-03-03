@@ -241,6 +241,8 @@ void clean_cache () {
  * returns 1 if kubernetes informations have been found
  */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
+  docker_api* qr;
+  
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
   if (difftime(now, last) > CLEAN_INTERVAL /* Seconds */ ) {
@@ -248,10 +250,11 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
     last = now;
   }
 
-  if (strcmp(t_cgroupid, "/") == 0) return -1; 
+  if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0)) {
+    return -1; 
+  }
   
   std::string cgroupid(t_cgroupid);
-  docker_api* qr;
   // Checking if the query has been cached. If not then try to update the cache
   if (docker_id_cached(cgroupid, &qr) != 0 && update_query_cache(t_cgroupid, &qr) != 0)  {
     return -1;
