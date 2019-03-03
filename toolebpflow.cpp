@@ -86,19 +86,22 @@ int main(int argc, char **argv) {
                           long_opts, NULL)) != EOF) {
       switch (ch) {
         case 'u':
-          flags += UDP;
+          flags |= UDP;
           break;
         case 't':
-          flags += TCP;
+          flags |= TCP;
           break;
         case 'i':
-          flags += INCOME;
+          flags |= INCOME;
           break;
         case 'o':
-          flags += OUTCOME; 
+          flags |= OUTCOME; 
           break;
         case 'c':
-          flags += TCP_CLOSE;
+          flags |= TCP_CLOSE;
+          break;
+        case 'r':
+          flags |= TCP_RETR;
           break;
         case 'd': 
           gDOCKER_ENABLE=1;        
@@ -116,12 +119,13 @@ int main(int argc, char **argv) {
     flags = 0xffff;
   }
   if (!(flags & INCOME) && !(flags & OUTCOME)) {
-    flags += INCOME + OUTCOME;
+    flags += INCOME | OUTCOME;
   }
-  if (!(flags & TCP) && !(flags & UDP) && !(flags & TCP_CLOSE)) {
-    flags += UDP + TCP + TCP_CLOSE;
+  if (!(flags & TCP) && !(flags & UDP) 
+    && !(flags & TCP_CLOSE) && !(flags & eTCP_RETR)) {
+    flags += (UDP | TCP) | TCP_CLOSE;
   }
-
+  
   // Checking root ----- //
   if (getuid() != 0) {
     printf("Please run as root user \n");
