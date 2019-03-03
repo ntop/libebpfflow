@@ -36,10 +36,22 @@
 #define COMMAND_LEN       16
 #define CGROUP_ID_LEN     64
 
+/*
+ * Events types are forged as follows:
+ *  I_digit (=1): init events (e.g. connection creation)
+ *          (=2): update events on existing connection
+ *          (=3): connection closing
+ *  II_digit (=0): tcp events
+ *           (=1): udp events
+ *  III_digit: discriminate the single event
+ */
 typedef enum {
-  INIT = 0, // e.g TCP accept
-  END = 1, // e.g. TCP close
-  UPDATE = 2, // e.g. UDP send
+  eTCP_ACPT = 100,
+  eTCP_CONN = 101,
+  eUDP_RECV = 210,
+  eUDP_SEND = 211,
+  eTCP_RETR = 200,
+  eTCP_CLOSE = 300,
 } event_type;
 
 struct netInfo {
@@ -47,6 +59,7 @@ struct netInfo {
   __u16 dport;
   __u8  proto;
   __u32 latency_usec;
+  __u16 retransmissions;
 };
 
 struct taskInfo {
@@ -84,7 +97,7 @@ typedef struct {
   char ifname[IFNAMSIZ];
   struct timeval event_time;
   __u8  ip_version:4, sent_packet:4;
-  u_int8_t etype, return_code;
+  __u16 etype;
   
   union {
     struct ipv4_kernel_data v4;
@@ -112,7 +125,8 @@ typedef enum {
   UDP = 1 << 1,
   INCOME = 1 << 2,
   OUTCOME = 1 << 3,
-  TCP_CLOSE = 1 << 4
+  TCP_CLOSE = 1 << 4,
+  TCP_RETR = 1 << 5,
 } libebpflow_flag;
 
 

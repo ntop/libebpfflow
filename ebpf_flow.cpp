@@ -170,9 +170,15 @@ extern "C" {
         goto init_failed;
       }
     }
-    
     if (flags & TCP_CLOSE) {
       if (attachEBPFKernelProbe(bpf, "tcp_set_state", "trace_tcp_close", BPF_PROBE_ENTRY))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if (flags & TCP_RETR) {
+      if (attachEBPFKernelProbe(bpf, "tcp_retransmit_skb", "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY))
       {
         *rc = ebpf_kprobe_attach_error;
         goto init_failed;
