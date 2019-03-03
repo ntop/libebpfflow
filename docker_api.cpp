@@ -18,10 +18,12 @@
  *
  */
 
-#ifndef __DOCKER_API_HPP__
-#define __DOCKER_API_HPP__ 1
+#include "docker_api.h"
+
+#include "config.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <stdlib.h>
 #include <unordered_map>
@@ -31,22 +33,12 @@
 #include <json-c/json.h>
 
 
-#define MINTOCLEAN 100
-
-struct docker_api {
-  int accessed;
-  char docker_name[100];
-  int kube; // 1 if kubernetes info are available
-  char kube_pod[60];
-  char kube_namespace[60];
-};
-
-
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
+// Cache where to store the queries results
 std::unordered_map<std::string, struct docker_api*> *gQueryCache = nullptr;
 
- 
+
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
 /* ************************************************* */
@@ -69,11 +61,6 @@ void docker_api_clean () {
 /* ********************************************** */
 // ===== ===== QUERY TO DOCKER DAEMON ===== ===== //
 /* ********************************************** */
-struct ResponseBuffer {
-  char *memory;
-  size_t size;
-};
- 
 static size_t
 WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp)
 {
@@ -178,7 +165,7 @@ int update_query_cache (char* t_cgroupid, struct docker_api **t_dqr) {
 
   // Checking for errors
   if(res != CURLE_OK) {
-    fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+    printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
     return -1;
   }
   
@@ -256,12 +243,12 @@ void clean_cache () {
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
-  if (difftime(now, last) > 5) {
+  if (difftime(now, last) > CLEAN_INTERVAL /* Seconds */ ) {
     clean_cache();
     last = now;
   }
 
-  if (strcmp(t_cgroupid, "") == 0) return -1; 
+  if (strcmp(t_cgroupid, "/") == 0) return -1; 
   
   std::string cgroupid(t_cgroupid);
   docker_api* qr;
@@ -274,4 +261,3 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   return qr->kube;
 } 
 
-#endif /* __DOCKER_API_HPP__ */

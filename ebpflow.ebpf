@@ -38,9 +38,25 @@ struct sock_stats {
 // hash map currsock
 BPF_HASH(currsock, u32, struct sock_stats);
 
+
+// Retransmissions
+struct retr_entry {
+  u64 ts;
+  u32 count;
+};
+#define BPF_LRU_HASH3(_name, _key_type, _leaf_type) BPF_TABLE("lru_hash", _key_type, _leaf_type, _name, 10240)
+BPF_LRU_HASH3(retr_table, u32, struct retr_entry);
+
+
 #define CGROUP_ID_LEN 64 // max is in limits.h -> NAME_MAX
 
 #define COMMAND_LEN  TASK_COMM_LEN
+
+typedef enum {
+  INIT = 0, // e.g TCP accept
+  END = 1, // e.g. TCP close
+  UPDATE = 2, // e.g. UDP send
+} event_type;
 
 struct taskInfo {
   u32 pid; /* Process Id */
@@ -75,6 +91,7 @@ typedef struct {
   char ifname[IFNAMSIZ];
   struct timeval event_time;
   u_int8_t ip_version:4, sent_packet:4;
+  u_int8_t etype, return_code;
 
   union {
     struct ipv4_data_t v4;
@@ -376,6 +393,56 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 
   return(0);
 }
+
+/* ******************************************* */
+
+// Fired when the state changes and check if the state is CLOSE
+int trace_tcp_close(struct pt_regs *ctx, struct sock *sk, int state) {
+  if (state!=BPF_TCP_CLOSE) return 0;
+  
+  eBPFevent event = { .etype = END, .ip_version = 6 };
+  
+  fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
+  ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  return 0;
+}
+
+/* ******************************************* */
+
+// int trace_tcp_retransmit_skb (struct pt_regs *ctx, struct sock *sk) {
+//   struct retr_entry newentry = {};
+//   struct KernelData event_data = {};
+//   struct retr_entry *e;
+//   u32 tid;
+//   u64 diff, ts;
+  
+//   tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;  
+//   ts = bpf_ktime_get_ns();
+
+//   if ((e = retr_table.lookup(&tid))==NULL) {
+//     newentry.ts = ts;
+//     newentry.count = 1;
+//     retr_table.update(&tid, &newentry);
+
+//     return -1;
+//   } else {
+//     e->count += 1;
+//     diff = ts - (e->ts);
+//     if (diff > 1000000000 /* 1 sec */) {
+//       event_data.netstat.retransmissions = e->count;
+//       fill_event(ctx, sk, NULL, &event_data, TCP_RETR);
+//       output_buffer.perf_submit(ctx, &event_data, sizeof(struct KernelData));
+
+//       // Resetting timer
+//       newentry.ts = ts;
+//       newentry.count = e->count;
+//       retr_table.update(&tid, &newentry);
+//     }
+//   }
+
+//   return 0;
+// }
+
 
 /* *********************** UDP *************************** */
 /* *********************** UDP *************************** */

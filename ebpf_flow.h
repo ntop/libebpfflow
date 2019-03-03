@@ -36,6 +36,12 @@
 #define COMMAND_LEN       16
 #define CGROUP_ID_LEN     64
 
+typedef enum {
+  INIT = 0, // e.g TCP accept
+  END = 1, // e.g. TCP close
+  UPDATE = 2, // e.g. UDP send
+} event_type;
+
 struct netInfo {
   __u16 sport;
   __u16 dport;
@@ -78,6 +84,7 @@ typedef struct {
   char ifname[IFNAMSIZ];
   struct timeval event_time;
   __u8  ip_version:4, sent_packet:4;
+  u_int8_t etype, return_code;
   
   union {
     struct ipv4_kernel_data v4;
@@ -105,6 +112,7 @@ typedef enum {
   UDP = 1 << 1,
   INCOME = 1 << 2,
   OUTCOME = 1 << 3,
+  TCP_CLOSE = 1 << 4
 } libebpflow_flag;
 
 
@@ -116,7 +124,7 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, short flags=0xffff);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, __u16 flags=0xffff);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
   void ebpf_preprocess_event(eBPFevent *event, int docker_flag);

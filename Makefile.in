@@ -30,9 +30,12 @@ LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
 
 all: ebpftest
 
-libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.hpp ebpflow.ebpf.enc
+docker_api.o: docker_api.cpp docker_api.h
+	g++ -c $(CFLAGS) docker_api.cpp -o docker_api.o
+
+libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.o ebpflow.ebpf.enc
 	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
-	ar rvs $@ ebpf_flow.o
+	ar rvs $@ ebpf_flow.o docker_api.o
 
 ebpftest: ebpftest.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) ebpftest.cpp -o $@ libebpfflow.a $(LIBS)
@@ -46,4 +49,4 @@ ebpflow.ebpf.enc: ebpflow.ebpf Makefile
 	echo ")\";" >> ebpflow.ebpf.enc
 
 clean:
-	/bin/rm -f *~ ebpftest libebpfflow.a *.o ebpflow.ebpf.enc #*
+	/bin/rm -f *~ ebpftest docker_api.a libebpfflow.a *.o ebpflow.ebpf.enc #*

@@ -23,6 +23,7 @@
 
 using namespace std;
 
+/* TODO: add vlan, remove newlines, defgault docker, dividi in .h .c, pulisci con variabili in cima */
 
 int gDOCKER_ENABLE=1;
 int gRUNNING = 1;
@@ -63,7 +64,7 @@ int main(int argc, char **argv) {
   // Argument Parsing ----- //
   int ch;
   short flags = 0;
-  gDOCKER_ENABLE=0;
+  gDOCKER_ENABLE=1;
   while ((ch = getopt_long(argc, argv,
 				                  "rcutiodh",
                           long_opts, NULL)) != EOF) {
@@ -80,6 +81,9 @@ int main(int argc, char **argv) {
         case 'o':
           flags += OUTCOME; 
           break;
+        case 'c':
+          flags += TCP_CLOSE;
+          break;
         case 'd': 
           gDOCKER_ENABLE=1;        
           break;
@@ -92,11 +96,11 @@ int main(int argc, char **argv) {
   if (argc==1) {
     flags = 0xffff;
   }
-  if (flags == TCP) {
-    flags = TCP + INCOME + OUTCOME;
+  if (!(flags & INCOME) && !(flags & OUTCOME)) {
+    flags += INCOME + OUTCOME;
   }
-  if (flags == UDP) {
-    flags = UDP + INCOME + OUTCOME;
+  if (!(flags & TCP) && !(flags & UDP) && !(flags & TCP_CLOSE)) {
+    flags += UDP + TCP + TCP_CLOSE;
   }
 
   // Checking root ----- //
@@ -204,18 +208,36 @@ char* intoaV6(unsigned __int128 addr, char* buf, u_short bufLen) {
 /* ***************************************** */
 // ===== ===== CALLBACK HANDLERS ===== ===== //
 /* ***************************************** */
-void etype2str (__u8 net_proto, __u8 sent_packet, char* t_buffer, int t_size) {
-  if (net_proto == IPPROTO_TCP) {
+void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
+  __u8 net_proto;
+  __u8 sent_packet = e->sent_packet;
+  __u8 etype = e->etype;
+
+  if (e->ip_version == 4) {
+    net_proto = e->event.v4.net.proto;
+  }
+  else {
+    net_proto = e->event.v4.net.proto;
+  }
+
+  if (etype == END) {
+    strncpy(t_buffer, "TCP/close",  t_size);
+  }
+  else if (net_proto == IPPROTO_TCP) {
     if (sent_packet) 
       strncpy(t_buffer, "TCP/conn",  t_size);
-    else strncpy(t_buffer, "TCP/acpt",  t_size);
+    else 
+      strncpy(t_buffer, "TCP/acpt",  t_size);
   }
   else if (net_proto == IPPROTO_UDP) {
     if (sent_packet) 
       strncpy(t_buffer, "UDP/snd",  t_size);
-    else strncpy(t_buffer, "UDP/rcv",  t_size);
+    else 
+      strncpy(t_buffer, "UDP/rcv",  t_size);
   } 
-  else strncpy(t_buffer, "?",  t_size);
+  else {
+    strncpy(t_buffer, "?",  t_size);
+  }
 }
 
 static void HandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
@@ -248,35 +270,35 @@ static void HandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   );
 
   // Network basic ----- //
-  printf("\t [IPv%d]", event.ip_version);
+  event_summary(&event, event_type_str, sizeof(event_type_str));
   if (event.ip_version == 4) {
     // IPv4 Event type
     struct ipv4_kernel_data *ipv4_event = &event.event.v4; 
-    etype2str(ipv4_event->net.proto, event.sent_packet, 
-      event_type_str, sizeof(event_type_str));
     // IPv4 Network info
     char buf1[32], buf2[32];
-    printf("\t [%s][addr: %s:%d <-> %s:%d] (net)\n",
+    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net)\n",
+      event.ifname,
+      event.ip_version,
       event_type_str,
       intoaV4(htonl(ipv4_event->saddr), buf1, sizeof(buf1)), ipv4_event->net.sport,
       intoaV4(htonl(ipv4_event->daddr), buf2, sizeof(buf2)), ipv4_event->net.dport);
     // IPv4 Latency if available
-    if(ipv4_event->net.proto == IPPROTO_TCP)
+    if(strcmp(event_type_str, "TCP/conn") == 0)
       printf("\t [latency: %.2f msec] (netstat) \n", ((float)ipv4_event->net.latency_usec)/(float)1000);
   }
   else {
     // IPv6 Event type
     struct ipv6_kernel_data *ipv6_event = &event.event.v6; 
-    etype2str(ipv6_event->net.proto, event.sent_packet, 
-      event_type_str, sizeof(event_type_str));
     // IPv6 Network info
     char buf1[128], buf2[128];
-    printf("\t [%s][addr: %s:%d <-> %s:%d] (net) \n",
+    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net) \n",
+      event.ifname,
+      event.ip_version,
       event_type_str,
       intoaV6(htonl(ipv6_event->saddr), buf1, sizeof(buf1)), ipv6_event->net.sport,
       intoaV6(htonl(ipv6_event->daddr), buf2, sizeof(buf2)), ipv6_event->net.dport);
     // IPv6 Latency if available
-    if(ipv6_event->net.proto == IPPROTO_TCP)
+    if(strcmp(event_type_str, "TCP/conn") == 0)
       printf("\t [latency: %.2f msec] (netstat) \n", ((float)ipv6_event->net.latency_usec)/(float)1000);
   }
 
