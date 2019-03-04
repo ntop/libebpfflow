@@ -94,13 +94,22 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp)
  * return 0 if no error occurred -1 otherwise 
  */
 int parse_response (char* buff, int buffsize, cache_entry **res) { 
-  struct json_object *jobj, *jdockername, *jconfig, *jlabel, *jpodname, *jkubens;
+  struct json_object *jobj = NULL;
+  struct json_object *jdockername, *jconfig, *jlabel, *jpodname, *jkubens;
   struct json_tokener *jtok;
   struct cache_entry *entry;
   struct docker_api *dqr;
 
   // Creating cache entry
   entry = (struct cache_entry *) malloc(sizeof(struct cache_entry));
+  entry->value = NULL;
+
+  // Dummy entry
+  if (buff == NULL) {
+    goto fail;
+  }
+
+  // Trying to populate if not empty
   dqr = (struct docker_api *) malloc(sizeof(struct docker_api));
   entry->value = dqr;
   dqr->kube = 0;
@@ -142,8 +151,14 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   return 0;
 
 fail:
-  free(dqr);
-  entry->value = nullptr;
+  if (jobj) { 
+    json_object_put(jobj);
+  }
+  if (dqr != NULL){
+    free(dqr);
+  }
+  entry->value = NULL;
+  *res = entry;
   return -1;
 }
 
@@ -151,7 +166,7 @@ fail:
  * update_query_cache - query to docker api from docker socket (/var/run/docker.sock) and caches the result.
  * @t_cgroupid: full length cgroup id
  * @t_dqr: filled with the information gathered if no error occurred
- * returns 0 if no error occurres otherwise -1
+ * returns 0 if no error occurred and associate info are found, otherwise -1
  * note: the same operation can be done using 
  *       `$ curl --unix-socket /var/run/docker.sock http://localhost/containers/<container-id>/json`
  */
@@ -159,6 +174,8 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURL *curl_handle;
   CURLcode res;
   char url[101];
+  cache_entry *dqr;
+  std::string cgroupid(t_cgroupid);
   // Crafting query
   snprintf(url, sizeof(url), query_from_id, t_cgroupid);
   
@@ -179,17 +196,17 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   res = curl_easy_perform(curl_handle);
 
   // Checking for errors
-  if(res != CURLE_OK) {
-    printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-    return -1;
+  if(res != CURLE_OK) /* Create dummy entry */ {
+    printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
+    parse_response(NULL, 0, &dqr);
   }
-  
-  cache_entry *dqr;
-  parse_response(chunk.memory, chunk.size, &dqr);
+  else {
+    parse_response(chunk.memory, chunk.size, &dqr);
+    // Setting accessed times to zero
+    dqr->accessed = 0;
+  }
 
-  std::string cgroupid(t_cgroupid);
-  // Setting accessed times to zero
-  dqr->accessed = 0;
+  // Adding entry to table and pointing argument to entry
   gQueryCache->emplace(cgroupid, dqr);
   *t_dqr = dqr;
 
@@ -197,7 +214,8 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   curl_easy_cleanup(curl_handle);
   free(chunk.memory);
   curl_global_cleanup();
-  return 0;
+  
+  return (dqr->value == NULL ? -1:0);
 }
 
 
@@ -206,18 +224,22 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
 /* *********************************** */
 /*
  * docker_id_cached - check if containers info have been cached
- * returns -1 if the query has not been cached 0 otherwise
+ * returns -1 if the query has not been cached 0 if some info are available
+ *  1 for dummy keys
  */
 int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
   std::unordered_map<std::string, struct cache_entry*>::iterator res;  
   res = gQueryCache->find(t_cgroupid);
 
-  if (res != gQueryCache->end() && res->second->value != nullptr) {
-    res->second->accessed += 1;
-    *t_dqs = res->second;
-    return 0;
+  if (res != gQueryCache->end()) {
+    if (res->second->value != nullptr) {
+      res->second->accessed += 1;
+      *t_dqs = res->second;
+      return 0;
+    }
+    return 1; 
   }
-  else return -1;
+  return -1;
 }
 
 
@@ -249,15 +271,10 @@ void clean_cache () {
 /* ******************************* */
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
-/*
- * docker_id_getname - fill a docker_api data structure with information
- *   garthered by a docker daemon query
- * @t_cgroupid: full length container identifier
- * @t_buff: t_dqr docker api query data structure
- * returns 1 if kubernetes informations have been found
- */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   cache_entry* qr;
+  std::string cgroupid(t_cgroupid);
+  int res;
   
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
@@ -270,13 +287,14 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
     return -1; 
   }
   
-  std::string cgroupid(t_cgroupid);
-  // Checking if the query has been cached. If not then try to update the cache
-  if (docker_id_cached(cgroupid, &qr) != 0 && update_query_cache(t_cgroupid, &qr) != 0)  {
+  res = docker_id_cached(cgroupid, &qr);
+  if (res == 1) {
     return -1;
   }
-  // No error occurred
-  *t_dqr = qr->value;
-  return (*t_dqr)->kube;
+  else if (res == 0 || update_query_cache(t_cgroupid, &qr) == 0) {
+    *t_dqr = qr->value;
+    return (*t_dqr)->kube; 
+  }
+  return -1;
 } 
 

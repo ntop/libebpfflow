@@ -31,7 +31,7 @@
 // with less than MINTOCLEAN accesses will be removed
 #define MINTOCLEAN 50
 // Cache clean interval in seconds
-#define CLEAN_INTERVAL 5
+#define CLEAN_INTERVAL 30
 
 
 struct cache_entry {
@@ -111,11 +111,11 @@ void clean_cache ();
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
 /*
- * docker_id_getname - fill a docker_api data structure with information
- *   garthered by a docker daemon query
+ * docker_id_getname - set a pointer to the associated information
  * @t_cgroupid: full length container identifier
  * @t_buff: t_dqr docker api query data structure
- * returns 1 if kubernetes informations have been found
+ * returns 1 if kubernetes informations have been found, -1 if no
+ * 	information has been found, otherwise zero
  */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr);
 
