@@ -29,14 +29,33 @@
 
 /* ******************************************* */
 
-#define COMMAND_LEN       16
+#define COMMAND_LEN       17
 #define CGROUP_ID_LEN     64
+
+/*
+ * Events types are forged as follows:
+ *  I_digit (=1): init events (e.g. connection creation)
+ *          (=2): update events on existing connection
+ *          (=3): connection closing
+ *  II_digit (=0): tcp events
+ *           (=1): udp events
+ *  III_digit: discriminate the single event
+ */
+typedef enum {
+  eTCP_ACPT = 100,
+  eTCP_CONN = 101,
+  eUDP_RECV = 210,
+  eUDP_SEND = 211,
+  eTCP_RETR = 200,
+  eTCP_CLOSE = 300,
+} event_type;
 
 struct netInfo {
   __u16 sport;
   __u16 dport;
   __u8  proto;
   __u32 latency_usec;
+  __u16 retransmissions;
 };
 
 struct taskInfo {
@@ -74,6 +93,7 @@ typedef struct {
   char ifname[IFNAMSIZ];
   struct timeval event_time;
   __u8  ip_version:4, sent_packet:4;
+  __u16 etype;
   
   union {
     struct ipv4_kernel_data v4;
@@ -101,6 +121,8 @@ typedef enum {
   UDP = 1 << 1,
   INCOME = 1 << 2,
   OUTCOME = 1 << 3,
+  TCP_CLOSE = 1 << 4,
+  TCP_RETR = 1 << 5,
 } libebpflow_flag;
 
 
@@ -112,8 +134,8 @@ extern "C" {
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
   
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler,
-		       ebpfRetCode *rc, u_int16_t flags /* Use 0xFFFF for default */);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, 
+    ebpfRetCode *rc, u_int16_t flags=0xffff  /* Use 0xFFFF for default */);
   void  term_ebpf_flow(void *ebpfHook);
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
   void ebpf_preprocess_event(eBPFevent *event, bool docker_flag);

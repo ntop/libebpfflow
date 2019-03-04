@@ -140,36 +140,50 @@ extern "C" {
 
     // attaching probes ----- //
     if ((flags & TCP) && (flags & OUTCOME)) {
-      if (attachEBPFKernelProbe(bpf,    "tcp_v4_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-	  || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_entry",     BPF_PROBE_ENTRY)
-	  || attachEBPFKernelProbe(bpf, "tcp_v4_connect",  "trace_connect_v4_return", BPF_PROBE_RETURN)
-	  || attachEBPFKernelProbe(bpf, "tcp_v6_connect",  "trace_connect_v6_return", BPF_PROBE_RETURN)) 
-	{
-	  *rc = ebpf_kprobe_attach_error;
-	  goto init_failed;
-	}
+      if (attachEBPFKernelProbe(bpf,"tcp_v4_connect", "trace_connect_entry", BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect", "trace_connect_entry", BPF_PROBE_ENTRY)
+        || attachEBPFKernelProbe(bpf, "tcp_v4_connect", "trace_connect_v4_return", BPF_PROBE_RETURN)
+        || attachEBPFKernelProbe(bpf, "tcp_v6_connect", "trace_connect_v6_return", BPF_PROBE_RETURN)) 
+      {
+      *rc = ebpf_kprobe_attach_error;
+      goto init_failed;
+      }
     }
     if ((flags & TCP) && (flags & INCOME)) {
-      if (attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept",        BPF_PROBE_RETURN))
-	{
-	  *rc = ebpf_kprobe_attach_error;
-	  goto init_failed;
-	}
+      if (attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept", BPF_PROBE_RETURN))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
     }
     if ((flags & UDP) && (flags & OUTCOME)) {
-      if (attachEBPFTracepoint(bpf, "net:net_dev_queue",     "trace_netif_tx_entry"))
-	{
-	  *rc = ebpf_kprobe_attach_error;
-	  goto init_failed;
-	}
+      if (attachEBPFTracepoint(bpf, "net:net_dev_queue", "trace_netif_tx_entry"))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
     }
     if ((flags & UDP) && (flags & INCOME)) {
       if (attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry"))
-	{
-	  *rc = ebpf_kprobe_attach_error;
-	  goto init_failed;
-	}
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
     }
+    if (flags & TCP_CLOSE) {
+      if (attachEBPFKernelProbe(bpf, "tcp_set_state", "trace_tcp_set_state", BPF_PROBE_ENTRY))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    }
+    if (flags & TCP_RETR) {
+      if (attachEBPFKernelProbe(bpf, "tcp_retransmit_skb", "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY))
+      {
+        *rc = ebpf_kprobe_attach_error;
+        goto init_failed;
+      }
+    } 
 
     // opening output buffer ----- //
     open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, nullptr, (void*)priv_ptr);

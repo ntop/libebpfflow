@@ -22,16 +22,15 @@ endif
 
 CFLAGS=-g $(JSON_INC) $(LIBCURL_INC)
 LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
-TOOLS=ebpftest toolebpflow
 
-all: $(TOOLS)
+all: toolebpflow
 
-libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.h ebpflow.ebpf.enc
+docker_api.o: docker_api.cpp docker_api.h
+	g++ -c $(CFLAGS) docker_api.cpp -o docker_api.o
+
+libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.o ebpflow.ebpf.enc
 	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
-	ar rvs $@ ebpf_flow.o
-
-ebpftest: ebpftest.cpp libebpfflow.a Makefile
-	g++ $(CFLAGS) ebpftest.cpp -o $@ libebpfflow.a $(LIBS)
+	ar rvs $@ ebpf_flow.o docker_api.o
 
 toolebpflow: toolebpflow.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) toolebpflow.cpp -o $@ libebpfflow.a $(LIBS)
@@ -42,4 +41,4 @@ ebpflow.ebpf.enc: ebpflow.ebpf Makefile
 	echo ")\";" >> ebpflow.ebpf.enc
 
 clean:
-	/bin/rm -f *~ $(TOOLS) libebpfflow.a *.o ebpflow.ebpf.enc #*
+	/bin/rm -f *~ ebpftest docker_api.a libebpfflow.a *.o ebpflow.ebpf.enc
