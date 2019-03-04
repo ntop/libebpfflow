@@ -36,7 +36,7 @@
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
 // Cache where to store the queries results
-std::unordered_map<std::string, struct cache_entry*> *gQueryCache = nullptr;
+std::unordered_map<std::string, struct cache_entry*> *gQueryCache = NULL;
 
 
 /* ************************************************* */
@@ -47,7 +47,7 @@ void docker_api_init () {
 }
 
 void clean_cache_entry (struct cache_entry *e) {
-  if (e->value != nullptr) {
+  if (e->value != NULL) {
     free(e->value);
   }
   free(e);
@@ -56,13 +56,13 @@ void clean_cache_entry (struct cache_entry *e) {
 void docker_api_clean () {
   std::unordered_map<std::string, struct cache_entry*>::iterator it; 
 
-  if (gQueryCache==nullptr) return;
+  if (gQueryCache==NULL) return;
 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) { 
     clean_cache_entry(it->second);
   }
   delete gQueryCache;
-  gQueryCache = nullptr;
+  gQueryCache = NULL;
 }
 
 
@@ -90,10 +90,6 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp)
   return realsize;
 }
 
-/* parse_response - fill a docker_api data structure with the information returned by a query to
- *   the docker daemon
- * return 0 if no error occurred -1 otherwise 
- */
 int parse_response (char* buff, int buffsize, cache_entry **res) { 
   struct json_object *jobj = NULL;
   struct json_object *jdockername, *jconfig, *jlabel, *jpodname, *jkubens;
@@ -163,14 +159,6 @@ fail:
   return -1;
 }
 
-/* 
- * update_query_cache - query to docker api from docker socket (/var/run/docker.sock) and caches the result.
- * @t_cgroupid: full length cgroup id
- * @t_dqr: filled with the information gathered if no error occurred
- * returns 0 if no error occurred and associate info are found, otherwise -1
- * note: the same operation can be done using 
- *       `$ curl --unix-socket /var/run/docker.sock http://localhost/containers/<container-id>/json`
- */
 int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURL *curl_handle;
   CURLcode res;
@@ -224,17 +212,13 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
 /* *********************************** */
 // ===== ===== CACHE CHECK ===== ===== //
 /* *********************************** */
-/*
- * docker_id_cached - check if containers info have been cached
- * returns -1 if the query has not been cached 0 if some info are available
- *  1 for dummy keys
- */
-int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
+int docker_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
+  std::string cgroupid(t_cgroupid);
   std::unordered_map<std::string, struct cache_entry*>::iterator res;  
-  res = gQueryCache->find(t_cgroupid);
+  res = gQueryCache->find(cgroupid);
 
   if (res != gQueryCache->end()) {
-    if (res->second->value != nullptr) {
+    if (res->second->value != NULL) {
       res->second->accessed += 1;
       *t_dqs = res->second;
       return 0;
@@ -251,12 +235,12 @@ void clean_cache () {
   std::vector<std::string>::iterator marked_it;
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if (gQueryCache==nullptr) return;
+  if (gQueryCache==NULL) return;
 
   // Getting entries accessed less than MINTOCLEAN times 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
     entry = it->second; 
-    if (entry->accessed < MINTOCLEAN || entry->value==nullptr) {
+    if (entry->accessed < MINTOCLEAN || entry->value==NULL) {
       markedentries.push_back(it->first);
       clean_cache_entry(it->second);
     }
@@ -276,10 +260,9 @@ void clean_cache () {
 /* ******************************* */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   cache_entry* qr;
-  std::string cgroupid(t_cgroupid);
   int res;
-  static time_t last = time(nullptr);
-  time_t now = time(nullptr);
+  static time_t last = time(NULL);
+  time_t now = time(NULL);
   
   if (difftime(now, last) > CLEAN_INTERVAL /* Seconds */ ) {
     clean_cache();
@@ -290,7 +273,7 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
     return -1; 
   }
   
-  res = docker_id_cached(cgroupid, &qr);
+  res = docker_id_cached(t_cgroupid, &qr);
   if (res == 1) {
     return -1;
   }

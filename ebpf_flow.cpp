@@ -186,7 +186,7 @@ extern "C" {
     } 
 
     // opening output buffer ----- //
-    open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, nullptr, (void*)priv_ptr);
+    open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, NULL, (void*)priv_ptr);
     if(open_res.code() != 0) { *rc = ebpf_events_open_error; goto init_failed; }
 
     *rc = ebpf_no_error;
