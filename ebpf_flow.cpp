@@ -230,7 +230,12 @@ extern "C" {
     char what[256], sym[256] = { '\0' };
     char fwhat[256], fsym[256] = { '\0' };
     int l;
-    
+      
+    struct docker_api *container_info;  
+    struct dockerInfo *dqr;
+    int docker_get_res;
+    struct kubeInfo *k;
+
     gettimeofday(&event->event_time, NULL);
     check_pid(&event->proc), check_pid(&event->father);
 
@@ -256,15 +261,14 @@ extern "C" {
     event->docker = NULL;
     event->kube = NULL;
     if (docker_flag) {
-      struct docker_api *container_info;
-      int res = docker_id_get(event->cgroup_id, &container_info);
-      if (res >= 0) /* Docker info available */ { 
-        struct dockerInfo *d = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
-        strcpy(d->dname, container_info->docker_name);
-        event->docker = d;
+      docker_get_res = docker_id_get(event->cgroup_id, &container_info);
+      if (docker_get_res >= 0) /* Docker info available */ { 
+        dqr = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
+        strcpy(dqr->dname, container_info->docker_name);
+        event->docker = dqr;
       }
-      if (res >= 1) /* Kubernetes info available */ {
-        struct kubeInfo *k = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
+      if (docker_get_res >= 1) /* Kubernetes info available */ {
+        k = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
         strcpy(k->pod, container_info->kube_pod);
         strcpy(k->ns, container_info->kube_namespace);
         event->kube = k;

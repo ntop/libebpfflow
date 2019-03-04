@@ -54,9 +54,10 @@ void clean_cache_entry (struct cache_entry *e) {
 }
 
 void docker_api_clean () {
+  std::unordered_map<std::string, struct cache_entry*>::iterator it; 
+
   if (gQueryCache==nullptr) return;
 
-  std::unordered_map<std::string, struct cache_entry*>::iterator it; 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) { 
     clean_cache_entry(it->second);
   }
@@ -73,8 +74,8 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp)
 {
   size_t realsize = size * nmemb;
   struct ResponseBuffer *mem = (struct ResponseBuffer *) userp;
- 
   char *ptr = (char*) realloc(mem->memory, mem->size + realsize + 1);
+
   if(ptr == NULL) {
     /* out of memory! */ 
     printf("not enough memory (realloc returned NULL)\n");
@@ -175,13 +176,14 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURLcode res;
   char url[101];
   cache_entry *dqr;
+  struct ResponseBuffer chunk;
   std::string cgroupid(t_cgroupid);
+
   // Crafting query
   snprintf(url, sizeof(url), query_from_id, t_cgroupid);
   
   // Performing query ----- //
   // Initializing memory buffer
-  struct ResponseBuffer chunk;
   chunk.memory = (char*) malloc(1);   
   chunk.size = 0;
   // Preparing libcurl  
@@ -244,6 +246,7 @@ int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
 
 
 void clean_cache () {
+  struct cache_entry *entry;
   std::vector<std::string> markedentries;
   std::vector<std::string>::iterator marked_it;
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
@@ -252,7 +255,7 @@ void clean_cache () {
 
   // Getting entries accessed less than MINTOCLEAN times 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
-    struct cache_entry *entry = it->second; 
+    entry = it->second; 
     if (entry->accessed < MINTOCLEAN || entry->value==nullptr) {
       markedentries.push_back(it->first);
       clean_cache_entry(it->second);
@@ -275,9 +278,9 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   cache_entry* qr;
   std::string cgroupid(t_cgroupid);
   int res;
-  
   static time_t last = time(nullptr);
   time_t now = time(nullptr);
+  
   if (difftime(now, last) > CLEAN_INTERVAL /* Seconds */ ) {
     clean_cache();
     last = now;

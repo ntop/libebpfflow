@@ -74,13 +74,13 @@ int main(int argc, char **argv) {
   ebpfRetCode rc;
   void *ebpf;
   void (*handler)(void*, void*, int) = ebpfHandler;
+  int ch;
+  short flags = 0;
+  gDOCKER_ENABLE=1;
 
   signal(SIGINT, handleTermination);
 
   // Argument Parsing ----- //
-  int ch;
-  short flags = 0;
-  gDOCKER_ENABLE=1;
   while ((ch = getopt_long(argc, argv,
 				                  "rcutiodvh",
                           long_opts, NULL)) != EOF) {
@@ -250,10 +250,13 @@ void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
 
 static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   char event_type_str[17];
+  char buf1[128], buf2[128];
   eBPFevent *e = (eBPFevent*)t_data;
+  struct ipv6_kernel_data *ipv6_event;
+  eBPFevent event;
+  struct ipv4_kernel_data *ipv4_event;
 
   // Preprocessing event ----- //
-  eBPFevent event;
   // Copy needed as ebpf_preprocess_event will modify the memory
   memcpy(&event, e, sizeof(eBPFevent));
   ebpf_preprocess_event(&event, gDOCKER_ENABLE);
@@ -281,9 +284,8 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   event_summary(&event, event_type_str, sizeof(event_type_str));
   if (event.ip_version == 4) {
     // IPv4 Event type
-    struct ipv4_kernel_data *ipv4_event = &event.event.v4; 
+    ipv4_event = &event.event.v4; 
     // IPv4 Network info
-    char buf1[32], buf2[32];
     printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net)\n",
       event.ifname,
       event.ip_version,
@@ -296,9 +298,8 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   }
   else {
     // IPv6 Event type
-    struct ipv6_kernel_data *ipv6_event = &event.event.v6; 
+    ipv6_event = &event.event.v6; 
     // IPv6 Network info
-    char buf1[128], buf2[128];
     printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net) \n",
       event.ifname,
       event.ip_version,
@@ -397,8 +398,6 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   printf("\n");
   ebpf_free_event(&event);
 }
-
-
 
 static void handleTermination(int t_s) {
   printf("\r* Terminating * \n");
