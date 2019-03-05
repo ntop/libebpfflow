@@ -144,7 +144,7 @@ extern "C" {
     }
 
     // attaching probes ----- //
-    if((flags & TCP) && (flags & OUTCOME)) {
+    if((flags & LIBEBPF_TCP) && (flags & LIBEBPF_OUTCOMING)) {
       if(attachEBPFKernelProbe(bpf,"tcp_v4_connect",
 			       "trace_connect_entry", BPF_PROBE_ENTRY)
 	 || attachEBPFKernelProbe(bpf, "tcp_v4_connect",
@@ -159,7 +159,7 @@ extern "C" {
 	}
     }
 
-    if((flags & TCP) && (flags & INCOME)) {
+    if((flags & LIBEBPF_TCP) && (flags & LIBEBPF_INCOMING)) {
       if(attachEBPFKernelProbe(bpf, "inet_csk_accept",
 			       "trace_tcp_accept", BPF_PROBE_RETURN)) {
 	  *rc = ebpf_kprobe_attach_error;
@@ -167,7 +167,7 @@ extern "C" {
 	}
     }
 
-    if((flags & UDP) && (flags & OUTCOME)) {
+    if((flags & LIBEBPF_UDP) && (flags & LIBEBPF_OUTCOMING)) {
       if(attachEBPFTracepoint(bpf, "net:net_dev_queue",
 			      "trace_netif_tx_entry")) {
 	  *rc = ebpf_kprobe_attach_error;
@@ -175,7 +175,7 @@ extern "C" {
 	}
     }
 
-    if((flags & UDP) && (flags & INCOME)) {
+    if((flags & LIBEBPF_UDP) && (flags & LIBEBPF_INCOMING)) {
       if(attachEBPFTracepoint(bpf, "net:netif_receive_skb",
 			      "trace_netif_rx_entry")) {
 	  *rc = ebpf_kprobe_attach_error;
@@ -183,7 +183,7 @@ extern "C" {
 	}
     }
 
-    if(flags & TCP_CLOSE) {
+    if(flags & LIBEBPF_TCP_CLOSE) {
       if(attachEBPFKernelProbe(bpf, "tcp_set_state",
 			       "trace_tcp_set_state", BPF_PROBE_ENTRY)) {
 	  *rc = ebpf_kprobe_attach_error;
@@ -191,7 +191,7 @@ extern "C" {
 	}
     }
 
-    if(flags & TCP_RETR) {
+    if(flags & LIBEBPF_TCP_RETR) {
       if(attachEBPFKernelProbe(bpf, "tcp_retransmit_skb",
 			       "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY)) {
 	  *rc = ebpf_kprobe_attach_error;

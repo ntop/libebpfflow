@@ -112,12 +112,12 @@ typedef enum {
 } ebpfRetCode;
 
 typedef enum {
-  TCP = 1 << 0,
-  UDP = 1 << 1,
-  INCOME = 1 << 2,
-  OUTCOME = 1 << 3,
-  TCP_CLOSE = 1 << 4,
-  TCP_RETR = 1 << 5,
+  LIBEBPF_TCP = 1 << 0,
+  LIBEBPF_UDP = 1 << 1,
+  LIBEBPF_INCOMING = 1 << 2,
+  LIBEBPF_OUTCOMING = 1 << 3,
+  LIBEBPF_TCP_CLOSE = 1 << 4,
+  LIBEBPF_TCP_RETR = 1 << 5,
 } libebpflow_flag;
 
 

@@ -87,22 +87,22 @@ int main(int argc, char **argv) {
 			   long_opts, NULL)) != EOF) {
     switch (ch) {
     case 'u':
-      flags |= UDP;
+      flags |= LIBEBPF_UDP;
       break;
     case 't':
-      flags |= TCP;
+      flags |= LIBEBPF_TCP;
       break;
     case 'i':
-      flags |= INCOME;
+      flags |= LIBEBPF_INCOMING;
       break;
     case 'o':
-      flags |= OUTCOME;
+      flags |= LIBEBPF_OUTCOMING;
       break;
     case 'c':
-      flags |= TCP_CLOSE;
+      flags |= LIBEBPF_TCP_CLOSE;
       break;
     case 'r':
-      flags |= TCP_RETR;
+      flags |= LIBEBPF_TCP_RETR;
       break;
     case 'd':
       gDOCKER_ENABLE=1;
@@ -116,16 +116,16 @@ int main(int argc, char **argv) {
     }
   }
   // Setting defaults
-  if (flags==0) {
+  if (flags==0)
     flags = 0xffff;
-  }
-  if (!(flags & INCOME) && !(flags & OUTCOME)) {
-    flags += INCOME | OUTCOME;
-  }
-  if (!(flags & TCP) && !(flags & UDP)
-      && !(flags & TCP_CLOSE) && !(flags & eTCP_RETR)) {
-    flags += (UDP | TCP) | TCP_CLOSE;
-  }
+  
+  if (!(flags & LIBEBPF_INCOMING) && !(flags & LIBEBPF_OUTCOMING))
+    flags += LIBEBPF_INCOMING | LIBEBPF_OUTCOMING;
+  
+  if (!(flags & LIBEBPF_TCP) && !(flags & LIBEBPF_UDP)
+      && !(flags & LIBEBPF_TCP_CLOSE) && !(flags & eTCP_RETR))
+    flags += (LIBEBPF_UDP | LIBEBPF_TCP) | LIBEBPF_TCP_CLOSE;
+  
 
   // Checking root ----- //
   if (getuid() != 0) {
