@@ -18,7 +18,7 @@ AC_TRY_COMPILE([
 	bpf->attach_kprobe((const char*)"", NULL, 0, BPF_PROBE_ENTRY);
 ], [ AC_MSG_RESULT(yes) AC_DEFINE_UNQUOTED(HAVE_NEW_EBPF, 1, [new BPF API]) ], [AC_MSG_RESULT(no)])
 
-DATE=`date +"%Y-%m-%d"`
+DATE=`date +"%y%m%d"`
 VERSION="1.0.${DATE}"
 
 AC_DEFINE_UNQUOTED(EBPF_FLOW_VERSION, "${VERSION}", "Library version")

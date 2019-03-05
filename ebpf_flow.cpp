@@ -89,8 +89,10 @@ static string LoadEBPF(string t_filepath) {
 static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const char *probe_func) {
   ebpf::StatusTuple rc = bpf->attach_tracepoint(tracepoint, probe_func);
 
+#ifdef DEBUG
   if(rc.code() != 0)
     printf("ERROR: %s/%s: %d/%s\n", tracepoint, probe_func, rc.code(), rc.msg().c_str());
+#endif
 
   return(rc.code());
 }
@@ -105,8 +107,10 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 #endif
 			      attach_type).code();
 
+#ifdef DEBUG
   if(rc != 0)
     printf("ERROR: %s/%s: %d\n", queue_name, entry_point, rc);
+#endif
 
   return(rc);
 }
@@ -114,7 +118,8 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 /* ******************************************* */
 
 extern "C" {
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, ebpfRetCode *rc, u_int16_t flags) {
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler,
+		       ebpfRetCode *rc, u_int16_t flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
@@ -139,51 +144,60 @@ extern "C" {
     }
 
     // attaching probes ----- //
-    if ((flags & TCP) && (flags & OUTCOME)) {
-      if (attachEBPFKernelProbe(bpf,"tcp_v4_connect", "trace_connect_entry", BPF_PROBE_ENTRY)
-        || attachEBPFKernelProbe(bpf, "tcp_v6_connect", "trace_connect_entry", BPF_PROBE_ENTRY)
-        || attachEBPFKernelProbe(bpf, "tcp_v4_connect", "trace_connect_v4_return", BPF_PROBE_RETURN)
-        || attachEBPFKernelProbe(bpf, "tcp_v6_connect", "trace_connect_v6_return", BPF_PROBE_RETURN)) 
-      {
-      *rc = ebpf_kprobe_attach_error;
-      goto init_failed;
-      }
+    if((flags & TCP) && (flags & OUTCOME)) {
+      if(attachEBPFKernelProbe(bpf,"tcp_v4_connect",
+			       "trace_connect_entry", BPF_PROBE_ENTRY)
+	 || attachEBPFKernelProbe(bpf, "tcp_v4_connect",
+				  "trace_connect_v4_return", BPF_PROBE_RETURN)
+	 || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
+				  "trace_connect_entry", BPF_PROBE_ENTRY)
+	 || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
+				  "trace_connect_v6_return", BPF_PROBE_RETURN)
+	 ) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
     }
-    if ((flags & TCP) && (flags & INCOME)) {
-      if (attachEBPFKernelProbe(bpf, "inet_csk_accept", "trace_tcp_accept", BPF_PROBE_RETURN))
-      {
-        *rc = ebpf_kprobe_attach_error;
-        goto init_failed;
-      }
+
+    if((flags & TCP) && (flags & INCOME)) {
+      if(attachEBPFKernelProbe(bpf, "inet_csk_accept",
+			       "trace_tcp_accept", BPF_PROBE_RETURN)) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
     }
-    if ((flags & UDP) && (flags & OUTCOME)) {
-      if (attachEBPFTracepoint(bpf, "net:net_dev_queue", "trace_netif_tx_entry"))
-      {
-        *rc = ebpf_kprobe_attach_error;
-        goto init_failed;
-      }
+
+    if((flags & UDP) && (flags & OUTCOME)) {
+      if(attachEBPFTracepoint(bpf, "net:net_dev_queue",
+			      "trace_netif_tx_entry")) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
     }
-    if ((flags & UDP) && (flags & INCOME)) {
-      if (attachEBPFTracepoint(bpf, "net:netif_receive_skb", "trace_netif_rx_entry"))
-      {
-        *rc = ebpf_kprobe_attach_error;
-        goto init_failed;
-      }
+
+    if((flags & UDP) && (flags & INCOME)) {
+      if(attachEBPFTracepoint(bpf, "net:netif_receive_skb",
+			      "trace_netif_rx_entry")) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
     }
-    if (flags & TCP_CLOSE) {
-      if (attachEBPFKernelProbe(bpf, "tcp_set_state", "trace_tcp_set_state", BPF_PROBE_ENTRY))
-      {
-        *rc = ebpf_kprobe_attach_error;
-        goto init_failed;
-      }
+
+    if(flags & TCP_CLOSE) {
+      if(attachEBPFKernelProbe(bpf, "tcp_set_state",
+			       "trace_tcp_set_state", BPF_PROBE_ENTRY)) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
     }
-    if (flags & TCP_RETR) {
-      if (attachEBPFKernelProbe(bpf, "tcp_retransmit_skb", "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY))
-      {
-        *rc = ebpf_kprobe_attach_error;
-        goto init_failed;
-      }
-    } 
+
+    if(flags & TCP_RETR) {
+      if(attachEBPFKernelProbe(bpf, "tcp_retransmit_skb",
+			       "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY)) {
+	  *rc = ebpf_kprobe_attach_error;
+	  goto init_failed;
+	}
+    }
 
     // opening output buffer ----- //
     open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, nullptr, (void*)priv_ptr);
@@ -230,7 +244,7 @@ extern "C" {
     char what[256], sym[256] = { '\0' };
     char fwhat[256], fsym[256] = { '\0' };
     int l;
-    
+
     gettimeofday(&event->event_time, NULL);
     check_pid(&event->proc), check_pid(&event->father);
 
@@ -253,17 +267,17 @@ extern "C" {
     }
 
     // Attaching docker container info
-    event->docker = NULL;
-    event->kube = NULL;
-    if (docker_flag) {
+    event->docker = NULL, event->kube = NULL;
+
+    if(docker_flag) {
       struct docker_api *container_info;
       int res = docker_id_get(event->cgroup_id, &container_info);
-      if (res >= 0) /* Docker info available */ { 
+      if(res >= 0) /* Docker info available */ {
         struct dockerInfo *d = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
         strcpy(d->dname, container_info->docker_name);
         event->docker = d;
       }
-      if (res >= 1) /* Kubernetes info available */ {
+      if(res >= 1) /* Kubernetes info available */ {
         struct kubeInfo *k = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
         strcpy(k->pod, container_info->kube_pod);
         strcpy(k->ns, container_info->kube_namespace);
@@ -281,10 +295,10 @@ extern "C" {
     if(event->father.full_task_path != NULL)
       free(event->father.full_task_path);
 
-    if (event->docker != NULL) 
+    if(event->docker != NULL)
       free(event->docker);
 
-    if (event->kube != NULL) 
+    if(event->kube != NULL)
       free(event->kube);
   }
 
@@ -334,6 +348,6 @@ extern "C" {
   /* ******************************************* */
 
   const char* ebpf_flow_version() {
-    return(EBPF_FLOW_VERSION);    
+    return(EBPF_FLOW_VERSION);
   }
 };

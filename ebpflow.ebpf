@@ -78,25 +78,15 @@ struct taskInfo {
   char task[COMMAND_LEN], *full_task;
 };
 
-struct netInfo {
-  u16 sport;
-  u16 dport;
-  u8  proto;
-  u32 latency_usec;
-  u16 retransmissions;
-};
-
 // separate data structs for ipv4 and ipv6
 struct ipv4_data_t {
   u64 saddr;
   u64 daddr;
-  struct netInfo net;
 };
 
 struct ipv6_data_t {
   unsigned __int128 saddr;
   unsigned __int128 daddr;
-  struct netInfo net;
 };
 
 typedef struct {
@@ -109,7 +99,12 @@ typedef struct {
   union {
     struct ipv4_data_t v4;
     struct ipv6_data_t v6;
-  } event;
+  } addr;
+
+  u8  proto;
+  u16 sport, dport;
+  u32 latency_usec;
+  u16 retransmissions;
 
   struct taskInfo proc, father;
   char cgroup_id[CGROUP_ID_LEN];
@@ -182,7 +177,7 @@ static void fill_cgroup_id(char *cgroup_id) {
   struct cgroup_subsys_state *sbs;
   struct kernfs_node *knode, *pknode;
 
-// Initializing to root cgroup
+  // Initializing to root cgroup
   memcpy(cgroup_id, "/\0", 2);
 
   curr_task = (struct task_struct *) bpf_get_current_task();
@@ -193,10 +188,10 @@ static void fill_cgroup_id(char *cgroup_id) {
   // Reading fspath
   bpf_probe_read(&knode, sizeof(void *), &cg->kn);
   bpf_probe_read(&pknode, sizeof(void *), &knode->parent);
-  
+
   if(pknode != NULL) {
     char *aus;
-    
+
     bpf_probe_read(&aus, sizeof(void *), &knode->name);
     bpf_probe_read_str(cgroup_id, CGROUP_ID_LEN-1, aus);
   }
@@ -216,7 +211,7 @@ static void fill_task_info(char *cgroup_id, struct taskInfo *task, struct taskIn
   task->uid = uid;
   task->gid = gid;
 
-  if(pid == 0) 
+  if(pid == 0)
     task->task[0] = '\0';
   else {
     bpf_get_current_comm(&task->task, sizeof(task->task));
@@ -234,24 +229,24 @@ static void swap_event_peers(eBPFevent *ev) {
     u32 tmp;
     u16 tmp16;
 
-    tmp16 = ev->event.v4.net.sport;
-    ev->event.v4.net.sport = ev->event.v4.net.dport;
-    ev->event.v4.net.dport = tmp16;
+    tmp16 = ev->sport;
+    ev->sport = ev->dport;
+    ev->dport = tmp16;
 
-    tmp = ev->event.v4.daddr;
-    ev->event.v4.daddr = ev->event.v4.saddr;
-    ev->event.v4.saddr = tmp;
+    tmp = ev->addr.v4.daddr;
+    ev->addr.v4.daddr = ev->addr.v4.saddr;
+    ev->addr.v4.saddr = tmp;
   } else {
     u16 tmp16;
     unsigned __int128 tmp;
 
-    tmp16 = ev->event.v4.net.sport;
-    ev->event.v4.net.sport = ev->event.v4.net.dport;
-    ev->event.v4.net.dport = tmp16;
+    tmp16 = ev->sport;
+    ev->sport = ev->dport;
+    ev->dport = tmp16;
 
-    memcpy(&tmp, &ev->event.v6.saddr, sizeof(tmp));
-    memcpy(&ev->event.v6.saddr, &ev->event.v6.daddr, sizeof(ev->event.v6.saddr));
-    memcpy(&ev->event.v6.daddr, &tmp, sizeof(ev->event.v6.daddr));
+    memcpy(&tmp, &ev->addr.v6.saddr, sizeof(tmp));
+    memcpy(&ev->addr.v6.saddr, &ev->addr.v6.daddr, sizeof(ev->addr.v6.saddr));
+    memcpy(&ev->addr.v6.daddr, &tmp, sizeof(ev->addr.v6.daddr));
   }
 }
 
@@ -270,7 +265,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
   ktime_t kt = { bpf_ktime_get_ns() };
 
   ev->sent_packet = (swap_peers == 0) ? 1 : 0;
-  
+
   bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
   if((family != AF_INET) && (family != AF_INET6)) return(-1);
 
@@ -300,56 +295,49 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
   if((sport == 0) && (dport == 0))
     return(-1);
 
+  ev->proc.pid = pid;
+  
   if(family == AF_INET) {
     ev->ip_version = 4;
-    ev->proc.pid = pid;
 
     if(saddr == 0)
-      bpf_probe_read(&ev->event.v4.saddr, sizeof(u32), &sk->__sk_common.skc_rcv_saddr);
+      bpf_probe_read(&ev->addr.v4.saddr, sizeof(u32), &sk->__sk_common.skc_rcv_saddr);
     else
-      ev->event.v4.saddr = saddr;
+      ev->addr.v4.saddr = saddr;
 
     if(daddr == 0)
-      bpf_probe_read(&ev->event.v4.daddr, sizeof(u32), &sk->__sk_common.skc_daddr);
+      bpf_probe_read(&ev->addr.v4.daddr, sizeof(u32), &sk->__sk_common.skc_daddr);
     else
-      ev->event.v4.daddr = daddr;
-
-    ev->event.v4.net.sport = sport;
-    ev->event.v4.net.dport = dport;
-    ev->event.v4.net.proto = proto;
-    ev->event.v4.net.latency_usec = delta;
+      ev->addr.v4.daddr = daddr;
   } else /* (family == AF_INET6)  */ {
     ev->ip_version = 6;
-    ev->proc.pid = pid;
-    bpf_probe_read(&ev->event.v6.saddr, sizeof(ev->event.v6.saddr), sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-    bpf_probe_read(&ev->event.v6.daddr, sizeof(ev->event.v6.daddr), sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
+  
+    bpf_probe_read(&ev->addr.v6.saddr, sizeof(ev->addr.v6.saddr),
+		   sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+    bpf_probe_read(&ev->addr.v6.daddr, sizeof(ev->addr.v6.daddr), sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
 
-    if(
-       /* Implement in a better way */
-       (((ev->event.v6.saddr) & 0xFFFFFFFF) == 0) && (((ev->event.v6.saddr >> 32) & 0xFFFFFFFF) == 0)
+    if(/* Implement in a better way */
+       (((ev->addr.v6.saddr) & 0xFFFFFFFF) == 0)
+       && (((ev->addr.v6.saddr >> 32) & 0xFFFFFFFF) == 0)
        ) {
       /* ::ffff:127.0.0.1 in IPv6 */
 
       ev->ip_version = 4;
       ev->proc.pid = pid;
-      ev->event.v4.saddr = 0x0100007f; /* 127.0.0.1 */
-      ev->event.v4.net.sport = sport;
-      ev->event.v4.daddr = 0x0100007f; /* 127.0.0.1 */
-      ev->event.v4.net.dport = dport;
-      ev->event.v4.net.latency_usec = delta;
-      ev->event.v4.net.proto = proto;
-      bpf_get_current_comm(&ev->proc.task, sizeof(ev->proc.task));
-    } else {
-      ev->event.v6.net.sport = sport;
-      ev->event.v6.net.dport = dport;
-      ev->proc.pid = pid;
-      ev->event.v6.net.proto = proto;
-      ev->event.v6.net.latency_usec = delta;
+      ev->addr.v4.saddr = 0x0100007f; /* 127.0.0.1 */
+      ev->sport = sport;
+      ev->addr.v4.daddr = 0x0100007f; /* 127.0.0.1 */
     }
   }
 
+  ev->dport = dport;
+  ev->latency_usec = delta;
+  ev->proto = proto;
+  bpf_get_current_comm(&ev->proc.task, sizeof(ev->proc.task));
+  ev->proc.pid = pid;
+
   fill_task_info((char*)ev->cgroup_id, &ev->proc, &ev->father);
-  
+
   if(swap_peers) swap_event_peers(ev);
 
   fill_ifname(ev, sk);
@@ -411,10 +399,11 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 
 // Fired when the state changes and check if the state is CLOSE
 int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
-  if (state!=BPF_TCP_CLOSE && state!=EINPROGRESS) return 0;
-  
+  if((state != 7 /* BPF_TCP_CLOSE */) && (state != EINPROGRESS))
+    return 0;
+
   eBPFevent event = { .etype = eTCP_CLOSE };
-  
+
   fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
   return 0;
@@ -423,35 +412,30 @@ int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
 /* ******************************************* */
 
 int trace_tcp_retransmit_skb (struct pt_regs *ctx, struct sock *sk) {
-  struct retr_entry newentry = {};
+  struct retr_entry newentry = { };
   eBPFevent event = { .etype = eTCP_RETR };
   struct retr_entry *e;
-  u32 tid;  
-  u64 diff, ts;
-  
-  tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;  
-  ts = bpf_ktime_get_ns();
+  u32 tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;
+  u64 diff;
+  u64 ts = bpf_ktime_get_ns();
 
-  if ((e = retr_table.lookup(&tid))==NULL) {
-    newentry.ts = ts;
-    newentry.count = 1;
+  if((e = retr_table.lookup(&tid)) == NULL) {
+    newentry.ts = ts, newentry.count = 1;
+
     retr_table.update(&tid, &newentry);
-
     return -1;
   } else {
     e->count += 1;
     diff = ts - (e->ts);
-    if (diff > 1000000000 /* 1 sec */) {
-      fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
-      // Setting retransmission count before sendig to user space
-      if (event.ip_version == 4){
-        event.event.v4.net.retransmissions = e->count;
-      }
-      else {
-        event.event.v6.net.retransmissions = e->count;
-      }
-      ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
 
+    if(diff > 1000000000 /* 1 sec */) {
+      fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
+
+      // Setting retransmission count before sending to user space
+      event.retransmissions = e->count;
+      
+      ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+      
       // Resetting timer
       newentry.ts = ts;
       newentry.count = e->count;
@@ -461,7 +445,6 @@ int trace_tcp_retransmit_skb (struct pt_regs *ctx, struct sock *sk) {
 
   return 0;
 }
-
 
 /* *********************** UDP *************************** */
 /* *********************** UDP *************************** */
@@ -479,9 +462,9 @@ static u8 is_cached_entry(eBPFevent *ev) {
 
   /* NOTE: implemented asymmetric hash to make sure we see both flow directions */
   if(ev->ip_version == 4)
-    hash_idx = ev->event.v4.saddr + ev->event.v4.daddr + ev->event.v4.net.sport + ev->event.v4.net.dport + ev->proc.pid;
+    hash_idx = ev->addr.v4.saddr + ev->addr.v4.daddr + ev->sport + ev->dport + ev->proc.pid;
   else
-    hash_idx = ev->event.v6.saddr + ev->event.v6.daddr + ev->event.v6.net.sport + ev->event.v6.net.dport + ev->proc.pid;
+    hash_idx = ev->addr.v6.saddr + ev->addr.v6.daddr + ev->sport + ev->dport + ev->proc.pid;
 
   when = udpmsglru.lookup(&hash_idx);
   now = bpf_ktime_get_ns();
@@ -516,19 +499,19 @@ static u8 is_cached_entry(eBPFevent *ev) {
 #define ETHERTYPE_VLAN          0x8100          /* IEEE 802.1Q VLAN tagging */
 
 #define MAC_HEADER_SIZE 14;
-#define member_address(source_struct, source_member)            \
-    ({                                                          \
-        void* __ret;                                            \
-        __ret = (void*) (((char*)source_struct) + offsetof(typeof(*source_struct), source_member)); \
-        __ret;                                                  \
-    })
-#define member_read(destination, source_struct, source_member)  \
-  do{                                                           \
-    bpf_probe_read(                                             \
-      destination,                                              \
-      sizeof(source_struct->source_member),                     \
-      member_address(source_struct, source_member)              \
-    );                                                          \
+#define member_address(source_struct, source_member)			\
+  ({									\
+    void* __ret;							\
+    __ret = (void*) (((char*)source_struct) + offsetof(typeof(*source_struct), source_member)); \
+    __ret;								\
+  })
+#define member_read(destination, source_struct, source_member)		\
+  do{									\
+    bpf_probe_read(							\
+		   destination,						\
+		   sizeof(source_struct->source_member),		\
+		   member_address(source_struct, source_member)		\
+								);	\
   } while(0)
 
 static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent_packet) {
@@ -539,19 +522,19 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
   u8 offset, l4proto, ip_version;
   char* ip_header_address;
   struct udphdr *udphdr;
-  u16 eth_proto; 
+  u16 eth_proto;
   struct net_device *dev;
 
   member_read(&head,       skb, head);
   member_read(&mac_header, skb, mac_header);
 
   head = head + mac_header;
-  
+
   bpf_probe_read(&eth_proto, sizeof(u16), &head[12]);
-  
+
   // Compute IP Header address
   ip_header_address = head + MAC_HEADER_SIZE;
-  
+
   // Load IP protocol version
   bpf_probe_read(&ip_version, sizeof(u8), ip_header_address);
   event.ip_version = ip_version >> 4 & 0xf;
@@ -571,43 +554,46 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
 
     // Discard non UDP traffic
     if(l4proto != IPPROTO_UDP) return 0;
-    
-    event.event.v4.saddr = iphdr.saddr;
-    event.event.v4.daddr = iphdr.daddr;
+
+    event.addr.v4.saddr = iphdr.saddr;
+    event.addr.v4.daddr = iphdr.daddr;
     udphdr = (struct udphdr*)(&ip_header_address[offset]);
-    bpf_probe_read(&event.event.v4.net.sport, sizeof(u16), &udphdr->source);
-    bpf_probe_read(&event.event.v4.net.dport, sizeof(u16), &udphdr->dest);
-    event.event.v4.net.sport = htons(event.event.v4.net.sport);
-    event.event.v4.net.dport = htons(event.event.v4.net.dport);
+    bpf_probe_read(&event.sport, sizeof(u16), &udphdr->source);
+    bpf_probe_read(&event.dport, sizeof(u16), &udphdr->dest);
+    event.sport = htons(event.sport);
+    event.dport = htons(event.dport);
   } else if(eth_proto == htons(ETHERTYPE_IPV6)) {
     // Assume no option header --> fixed size header
     struct ipv6hdr* ipv6hdr = (struct ipv6hdr*)ip_header_address;
-    
+
     event.ip_version = 6;
-    bpf_probe_read(&l4proto,  sizeof(ipv6hdr->nexthdr), (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
-    
+    bpf_probe_read(&l4proto, sizeof(ipv6hdr->nexthdr),
+		   (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
+
     // Discard non UDP traffic
     if(l4proto != IPPROTO_UDP) return 0;
- 
-    bpf_probe_read(&event.event.v6.saddr, sizeof(ipv6hdr->saddr), (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
-    bpf_probe_read(&event.event.v6.daddr, sizeof(ipv6hdr->daddr), (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
+
+    bpf_probe_read(&event.addr.v6.saddr, sizeof(ipv6hdr->saddr),
+		   (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
+    bpf_probe_read(&event.addr.v6.daddr, sizeof(ipv6hdr->daddr),
+		   (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
     offset = sizeof(*ipv6hdr);
     udphdr = (struct udphdr*)(&ip_header_address[offset]);
-    bpf_probe_read(&event.event.v6.net.sport, sizeof(u16), &udphdr->source);
-    bpf_probe_read(&event.event.v6.net.dport, sizeof(u16), &udphdr->dest);
-    event.event.v6.net.sport = htons(event.event.v6.net.sport);
-    event.event.v6.net.dport = htons(event.event.v6.net.dport);
+    bpf_probe_read(&event.sport, sizeof(u16), &udphdr->source);
+    bpf_probe_read(&event.dport, sizeof(u16), &udphdr->dest);
+    event.sport = htons(event.sport);
+    event.dport = htons(event.dport);
   } else {
 #if 0
     event.ip_version = 6;
-    event.event.v6.net.sport = ntohs(eth_proto);
+    event.sport = ntohs(eth_proto);
     ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
 #endif
     return(0);
   }
-    
-  event.event.v4.net.proto = IPPROTO_UDP;
-  event.event.v4.net.latency_usec = 0;
+
+  event.proto = IPPROTO_UDP;
+  event.latency_usec = 0;
 
   if(sent_packet)
     fill_task_info((char*)event.cgroup_id, &event.proc, &event.father);
@@ -619,7 +605,7 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
 
   member_read(&dev, skb, dev);
   bpf_probe_read(&event.ifname, IFNAMSIZ, dev->name);
-   
+
   if(!is_cached_entry(&event))
     ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
 
@@ -631,7 +617,7 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
 static void fill_ifname(eBPFevent *ev, struct sock *sk) {
   struct net_device *dev;
   struct dst_entry *dst;
-  
+
   member_read(&dst, sk, sk_dst_cache);
   member_read(&dev, dst, dev);
   bpf_probe_read(&ev->ifname, IFNAMSIZ, dev->name);
@@ -663,7 +649,7 @@ struct netif_rx_read_args {
 };
 
 /*
-  cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_bind/format 
+  cat /sys/kernel/debug/tracing/events/syscalls/sys_enter_bind/format
 
   field:int __syscall_nr;offset:8;size:4;signed:1;
   field:int fd;offset:16;size:8;signed:0;
@@ -695,6 +681,6 @@ int trace_receive_v4(struct pt_regs *ctx, struct sock *sk) {
 
   if(fill_event(ctx, &event, sk, NULL, bpf_ktime_get_ns(), IPPROTO_UDP, 0 /* don't swap */) == 0)
     ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
-  
+
   return(0);
 }

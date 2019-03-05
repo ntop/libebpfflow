@@ -50,14 +50,6 @@ typedef enum {
   eTCP_CLOSE = 300,
 } event_type;
 
-struct netInfo {
-  __u16 sport;
-  __u16 dport;
-  __u8  proto;
-  __u32 latency_usec;
-  __u16 retransmissions;
-};
-
 struct taskInfo {
   __u32 pid; /* Process Id */
   __u32 tid; /* Thread Id  */
@@ -70,13 +62,11 @@ struct taskInfo {
 struct ipv4_kernel_data {
   __u64 saddr;
   __u64 daddr;
-  struct netInfo net;
 };
 
 struct ipv6_kernel_data {
   unsigned __int128 saddr;
-  unsigned __int128 daddr;
-  struct netInfo net;
+  unsigned __int128 daddr;  
 };
 
 struct dockerInfo {
@@ -99,6 +89,11 @@ typedef struct {
     struct ipv4_kernel_data v4;
     struct ipv6_kernel_data v6;
   } event;
+
+  __u8  proto;
+  __u16 sport, dport;
+  __u32 latency_usec;
+  __u16 retransmissions;
 
   struct taskInfo proc, father;
 
