@@ -331,6 +331,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
   }
 
   ev->dport = dport;
+  ev->sport = sport;
   ev->latency_usec = delta;
   ev->proto = proto;
   bpf_get_current_comm(&ev->proc.task, sizeof(ev->proc.task));
