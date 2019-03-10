@@ -36,7 +36,7 @@
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
 // Cache where to store the queries results
-std::unordered_map<std::string, struct cache_entry*> *gQueryCache = nullptr;
+std::unordered_map<std::string, struct cache_entry*> *gQueryCache = NULL;
 
 
 /* ************************************************* */
@@ -47,7 +47,7 @@ void docker_api_init () {
 }
 
 void clean_cache_entry (struct cache_entry *e) {
-  if (e->value != nullptr)
+  if (e->value != NULL)
     free(e->value);
   
   free(e);
@@ -56,13 +56,13 @@ void clean_cache_entry (struct cache_entry *e) {
 void docker_api_clean () {
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
   
-  if (gQueryCache==nullptr) return;
+  if (gQueryCache==NULL) return;
 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) 
     clean_cache_entry(it->second);
   
   delete gQueryCache;
-  gQueryCache = nullptr;
+  gQueryCache = NULL;
 }
 
 
@@ -176,14 +176,14 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURL *curl_handle;
   CURLcode res;
   char url[101];
+  struct ResponseBuffer chunk;
   cache_entry *dqr;
   std::string cgroupid(t_cgroupid);
   // Crafting query
   snprintf(url, sizeof(url), query_from_id, t_cgroupid);
 
   // Performing query ----- //
-  // Initializing memory buffer
-  struct ResponseBuffer chunk;
+  // Initializing memory buffer 
   chunk.memory = (char*) malloc(1);
   chunk.size = 0;
   // Preparing libcurl
@@ -230,12 +230,13 @@ int update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
  * returns -1 if the query has not been cached 0 if some info are available
  *  1 for dummy keys
  */
-int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
+int docker_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
+  std::string cgroupid(t_cgroupid);
   std::unordered_map<std::string, struct cache_entry*>::iterator res;
-  res = gQueryCache->find(t_cgroupid);
+  res = gQueryCache->find(cgroupid);
 
   if (res != gQueryCache->end()) {
-    if (res->second->value != nullptr) {
+    if (res->second->value != NULL) {
       res->second->accessed += 1;
       *t_dqs = res->second;
       return 0;
@@ -247,16 +248,17 @@ int docker_id_cached (std::string t_cgroupid, struct cache_entry **t_dqs) {
 
 
 void clean_cache () {
+  struct cache_entry *entry;
   std::vector<std::string> markedentries;
   std::vector<std::string>::iterator marked_it;
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if (gQueryCache==nullptr) return;
+  if (gQueryCache==NULL) return;
 
   // Getting entries accessed less than MINTOCLEAN times
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
-    struct cache_entry *entry = it->second;
-    if (entry->accessed < MINTOCLEAN || entry->value==nullptr) {
+    entry = it->second;
+    if (entry->accessed < MINTOCLEAN || entry->value==NULL) {
       markedentries.push_back(it->first);
       clean_cache_entry(it->second);
     }
@@ -276,11 +278,10 @@ void clean_cache () {
 /* ******************************* */
 int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   cache_entry* qr;
-  std::string cgroupid(t_cgroupid);
   int res;
-
-  static time_t last = time(nullptr);
-  time_t now = time(nullptr);
+  static time_t last = time(NULL);
+  time_t now = time(NULL);
+  
   if (difftime(now, last) > CLEAN_INTERVAL /* Seconds */ ) {
     clean_cache();
     last = now;
@@ -290,7 +291,7 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
     return -1;
   }
 
-  res = docker_id_cached(cgroupid, &qr);
+  res = docker_id_cached(t_cgroupid, &qr);
   if (res == 1) {
     return -1;
   }

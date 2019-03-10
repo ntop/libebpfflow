@@ -72,6 +72,8 @@ static const struct option long_opts[] = {
 };
 
 int main(int argc, char **argv) {
+  int ch;
+  short flags = 0;
   ebpfRetCode rc;
   void *ebpf;
   void (*handler)(void*, void*, int) = ebpfHandler;
@@ -79,8 +81,6 @@ int main(int argc, char **argv) {
   signal(SIGINT, handleTermination);
 
   // Argument Parsing ----- //
-  int ch;
-  short flags = 0;
   gDOCKER_ENABLE=1;
   while ((ch = getopt_long(argc, argv,
 			   "rcutiodvh",
@@ -252,10 +252,12 @@ void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
 
 static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   char event_type_str[17];
+  struct ipv4_kernel_data *ipv4_event;
+  struct ipv6_kernel_data *ipv6_event;
   eBPFevent *e = (eBPFevent*)t_data;
+  eBPFevent event;
 
   // Preprocessing event ----- //
-  eBPFevent event;
   // Copy needed as ebpf_preprocess_event will modify the memory
   memcpy(&event, e, sizeof(eBPFevent));
   ebpf_preprocess_event(&event, gDOCKER_ENABLE);
@@ -281,7 +283,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   event_summary(&event, event_type_str, sizeof(event_type_str));
   if (event.ip_version == 4) {
     // IPv4 Event type
-    struct ipv4_kernel_data *ipv4_event = &event.event.v4;
+    ipv4_event = &event.event.v4;
     // IPv4 Network info
     char buf1[32], buf2[32];
     

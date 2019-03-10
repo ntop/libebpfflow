@@ -200,7 +200,7 @@ extern "C" {
     }
 
     // opening output buffer ----- //
-    open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, nullptr, (void*)priv_ptr);
+    open_res = bpf->open_perf_buffer("ebpf_events", ebpfHandler, NULL, (void*)priv_ptr);
     if(open_res.code() != 0) { *rc = ebpf_events_open_error; goto init_failed; }
 
     *rc = ebpf_no_error;
@@ -241,9 +241,12 @@ extern "C" {
   /* ******************************************* */
 
   void ebpf_preprocess_event(eBPFevent *event, bool docker_flag) {
+    struct docker_api *container_info;
+    struct dockerInfo *dinfo;
+    struct kubeInfo *kinfo;
+    int id_get_res, l;
     char what[256], sym[256] = { '\0' };
     char fwhat[256], fsym[256] = { '\0' };
-    int l;
 
     gettimeofday(&event->event_time, NULL);
     check_pid(&event->proc), check_pid(&event->father);
@@ -270,18 +273,17 @@ extern "C" {
     event->docker = NULL, event->kube = NULL;
 
     if(docker_flag) {
-      struct docker_api *container_info;
-      int res = docker_id_get(event->cgroup_id, &container_info);
-      if(res >= 0) /* Docker info available */ {
-        struct dockerInfo *d = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
-        strcpy(d->dname, container_info->docker_name);
-        event->docker = d;
+      id_get_res = docker_id_get(event->cgroup_id, &container_info);
+      if(id_get_res >= 0) /* Docker info available */ {
+        dinfo = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
+        strcpy(dinfo->dname, container_info->docker_name);
+        event->docker = dinfo;
       }
-      if(res >= 1) /* Kubernetes info available */ {
-        struct kubeInfo *k = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
-        strcpy(k->pod, container_info->kube_pod);
-        strcpy(k->ns, container_info->kube_namespace);
-        event->kube = k;
+      if(id_get_res >= 1) /* Kubernetes info available */ {
+        kinfo = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
+        strcpy(kinfo->pod, container_info->kube_pod);
+        strcpy(kinfo->ns, container_info->kube_namespace);
+        event->kube = kinfo;
       }
     }
   }
