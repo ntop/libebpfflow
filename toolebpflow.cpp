@@ -235,6 +235,9 @@ void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
   case eTCP_CONN:
     strncpy(t_buffer, "TCP/conn",  t_size);
     break;
+  case eTCP_CONN_FAIL:
+    strncpy(t_buffer, "TCP/conn *fail*",  t_size);
+    break;
   case eTCP_CLOSE:
     strncpy(t_buffer, "TCP/close",  t_size);
     break;
@@ -263,7 +266,9 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   ebpf_preprocess_event(&event, gDOCKER_ENABLE);
 
   // Event info ----- //
-  printf("[ktime: %lu]", (long unsigned int)(event.ktime / 100000));
+  printf("[%u.%06u]",
+	 (unsigned int)event.event_time.tv_sec,
+	 (unsigned int)event.event_time.tv_usec);
 
   // Task ----- //
   printf("[pid: %lu][uid: %lu][gid: %lu][%s] (task)\n",

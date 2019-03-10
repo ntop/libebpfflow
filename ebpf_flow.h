@@ -37,6 +37,7 @@
  *  I_digit (=1): init events (e.g. connection creation)
  *          (=2): update events on existing connection
  *          (=3): connection closing
+ *          (=5): operation failed
  *  II_digit (=0): tcp events
  *           (=1): udp events
  *  III_digit: discriminate the single event
@@ -45,6 +46,7 @@
 typedef enum {
   eTCP_ACPT = 100,
   eTCP_CONN = 101,
+  eTCP_CONN_FAIL = 500,
   eUDP_RECV = 210,
   eUDP_SEND = 211,
   eTCP_RETR = 200,
