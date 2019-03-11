@@ -13,11 +13,20 @@ import (
 #cgo LDFLAGS: -L. -lebpfflow -lcurl -lbcc -ljson-c -lstdc++
 #include "ebpf_flow.h"
 
+#include <stdlib.h>
+
 void go_handleEvent(void *t_bpfctx, void *t_data, int t_datalen);
 
 static void* init (__u16 flags) {
   ebpfRetCode rc;
   return init_ebpf_flow(NULL, go_handleEvent, &rc, flags);
+}
+
+static eBPFevent* preprocess (eBPFevent *e) {  
+  eBPFevent *event = malloc(sizeof(eBPFevent));
+  memcpy(event, e, sizeof(eBPFevent));
+  ebpf_preprocess_event(event, 0);
+  return event;
 }
 */
 import "C"
@@ -140,11 +149,11 @@ func charArray2goString () {
 //export go_handleEvent
 func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.int) {
   event := (* C.eBPFevent)(t_data)
-  // C.ebpf_preprocess_event(event, 0);
-  // full_path := C.GoString(go_event.Proc.Full_Task_Path)
+  filled_event := C.preprocess(event);
 
   fmt.Printf("[%d][task: %s][full_path: %s] \n",
-      event.ktime, C.GoString(&event.proc.task[0]))
+      filled_event.ktime, C.GoString(&filled_event.proc.task[0]),
+      C.GoString(filled_event.proc.full_task_path))
 
-  C.ebpf_free_event(event)
+  C.ebpf_free_event(filled_event)
 }
