@@ -360,11 +360,12 @@ static int trace_connect_return(struct pt_regs *ctx) {
   s = currsock.lookup(&tid);
   if(s == NULL)
     return(0); // missed entry
-
-  if(ret == 0) { /* Capture failures */
-    fill_event(ctx, &event, s->sk, NULL, s->ts, IPPROTO_TCP, 0 /* don't swap */);
+  
+  
+  fill_event(ctx, &event, s->sk, NULL, s->ts, IPPROTO_TCP, 0 /* don't swap */);
+  ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  if (ret != 0) { /* Capture failures */
     event.etype = eTCP_CONN_FAIL;
-    ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
   }
 
   currsock.delete(&tid);
