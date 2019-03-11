@@ -140,12 +140,12 @@ extern "C" {
   /*
    * init_ebpf_flow - Initializes the library with a target event handler
    * @flags: restrict the number of events to generate by
-   *    not tracing certain functions. Use default (i.e. 0xFFFF) to capture
+   *    not tracing certain functions. Use default (i.e. 0 or 0xFFFF) to capture
    *    all events. Supported events are combinations of libebpflow_flag enum type
    * returns a pointer to an ebpf::BPF object upon success NULL otherwise
    */
   void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, 
-    ebpfRetCode *rc, u_int16_t flags=0xffff  /* Use 0xFFFF for default */);
+    ebpfRetCode *rc, u_int16_t flags /* default 0 to capture all events */);
   /*
    * term_ebpf_flow - Cleans the resources used by the library
    * @ebpfHook: a pointer to an ebpf::BPF, that is the one returned by init_ebpf_flow 
@@ -160,7 +160,7 @@ extern "C" {
    * @docker_flag: if 1 docker daemon will be queried to gather information
    *    concerning containers
    */
-  void ebpf_preprocess_event(eBPFevent *event, bool docker_flag);
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag);
   const char* ebpf_print_error(ebpfRetCode rc);
   /*
   * Cleans the resources used by an eBPFevent data structure

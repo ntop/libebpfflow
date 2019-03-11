@@ -123,6 +123,9 @@ extern "C" {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
+    
+    // Default value is 0
+    flags = (flags == 0) ? 0xFFFF : flags; 
 
     docker_api_init();
 
@@ -240,7 +243,7 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_preprocess_event(eBPFevent *event, bool docker_flag) {
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag) {
     struct docker_api *container_info;
     struct dockerInfo *dinfo;
     struct kubeInfo *kinfo;
