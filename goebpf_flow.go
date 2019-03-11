@@ -56,51 +56,51 @@ type taskInfo struct {
   Uid uint32
   Gid uint32
   Task [COMMAND_LEN]byte // task name
-  Full_Task_Path *uint32
+  Full_Task_Path *C.char
 }
 
 type ipv4_kernel_data struct {
-  saddr uint64
-  daddr uint64
+  Saddr uint64
+  Daddr uint64
 }
 
 type ipv6_kernel_data struct {
-  saddr [128]byte
-  daddr [128]byte
+  Saddr [128]byte
+  Daddr [128]byte
 }
 
 type dockerInfo struct {
-  dname [100]byte // Docker container name
+  Dname [100]byte // Docker container name
 }
 
 type kubeInfo struct {
-  pod [60]byte;
-  ns [60]byte; // Kubernetes namespace
+  Pod [60]byte;
+  Ns [60]byte; // Kubernetes namespace
 }
 
 type eBPFevent struct {
-  ktime uint64 // Absolute kernel time
-  ifname [IFNAMSIZ]byte // net-dev name
-  event_time uint64 // Event time, filled during event preprocessing
-  ip_version uint8
-  sent_packet uint8
-  __u16 etype // event type, supported events are listed in event_type enum
+  Ktime uint64 // Absolute kernel time
+  Ifname [IFNAMSIZ]byte // net-dev name
+  Event_time uint64 // Event time, filled during event preprocessing
+  Ip_version uint8
+  Sent_packet uint8
+  EType etype // event type, supported events are listed in event_type enum
 
-  v4 ipv4_kernel_data
-  v6 ipv6_kernel_data
+  V4 ipv4_kernel_data
+  V6 ipv6_kernel_data
 
-  proto uint8
-  sport, dport uint16
-  latency_usec uint32
-  retransmissions uint16
+  Proto uint8
+  Sport, dport uint16
+  Latency_usec uint32
+  Retransmissions uint16
 
-  proc taskInfo
-  father taskInfo
+  Proc taskInfo
+  Father taskInfo
 
-  cgroup_id [CGROUP_ID_LEN]byte // Docker identifier
+  Cgroup_id [CGROUP_ID_LEN]byte // Docker identifier
   // Both next fields are initializated to NULL and populated only during preprocessing
-  docker *dockerInfo
-  kube *kubeInfo
+  Docker *dockerInfo
+  Kube *kubeInfo
 }
 
 var gRUNNING = true
@@ -124,6 +124,7 @@ func main() {
   }()
 
   // Polling
+  fmt.Printf("Ready to capture")
   for gRUNNING==true {
     C.ebpf_poll_event(ebpf, 10);
   }
@@ -132,7 +133,18 @@ func main() {
   C.term_ebpf_flow(ebpf);
 }
 
+func charArray2goString () {
+
+}
+
 //export go_handleEvent
 func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.int) {
-  fmt.Println("Hello, C callback")
+  event := (* C.eBPFevent)(t_data)
+  // C.ebpf_preprocess_event(event, 0);
+  // full_path := C.GoString(go_event.Proc.Full_Task_Path)
+
+  fmt.Printf("[%d][task: %s][full_path: %s] \n",
+      event.ktime, C.GoString(&event.proc.task[0]))
+
+  C.ebpf_free_event(event)
 }
