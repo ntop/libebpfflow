@@ -22,6 +22,7 @@ endif
 
 CFLAGS=-g $(JSON_INC) $(LIBCURL_INC)
 LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
+GOROOT=
 
 all: toolebpflow
 
@@ -40,5 +41,8 @@ ebpflow.ebpf.enc: ebpflow.ebpf Makefile
 	base64 -w 0 ebpflow.ebpf >> ebpflow.ebpf.enc
 	echo ")\";" >> ebpflow.ebpf.enc
 
+goebpf_flow: goebpf_flow.go Makefile libebpfflow.a
+	go build goebpf_flow.go
+
 clean:
-	/bin/rm -f *~ ebpftest docker_api.a libebpfflow.a *.o ebpflow.ebpf.enc
+	/bin/rm -f *~ goebpf_flow ebpftest docker_api.a libebpfflow.a *.o ebpflow.ebpf.enc
