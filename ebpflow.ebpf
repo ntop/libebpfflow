@@ -95,7 +95,7 @@ typedef struct {
   ktime_t ktime;
   char ifname[IFNAMSIZ];
   struct timeval event_time;
-  u_int8_t ip_version:4, sent_packet:4;
+  u_int8_t ip_version, sent_packet;
   u16 etype;
 
   union {

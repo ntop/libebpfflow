@@ -85,7 +85,7 @@ typedef struct {
   __u64 ktime; // Absolute kernel time
   char ifname[IFNAMSIZ]; // net-dev name
   struct timeval event_time; // Event time, filled during event preprocessing
-  __u8  ip_version:4, sent_packet:4;
+  __u8  ip_version, sent_packet;
   __u16 etype; // event type, supported events are listed in event_type enum
   
   union {
