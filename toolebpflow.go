@@ -1,7 +1,7 @@
 package main
 
 import (
-    e "./go"
+    ebpf_flow "./go"
     "os"
     "syscall"
     "os/signal"
@@ -11,7 +11,9 @@ import (
 var gRUNNING bool = true
 
 func main () {
-  ebpf := e.NewEbppflow(event_handler)
+  // Open ebpflow
+  ebpf := ebpf_flow.NewEbpflow(event_handler, 0)
+  fmt.Println("Initialzed")
 
   // Handle interruption
   c := make(chan os.Signal)
@@ -21,21 +23,23 @@ func main () {
     gRUNNING = false
   }()
 
+  // Poll events
   for gRUNNING == true {
-    ebpf.Poll(10)
+    ebpf.PollEvent(10)
   }
 
-  ebpf.Term()
+  // Clean resources
+  ebpf.Close()
  }
 
-func event_handler (event e.BPFevent) {
-  fmt.Printf("[%d][%d][%s][task:%s][path:%s][cgroup:%s]",
+func event_handler (event ebpf_flow.EBPFevent) {
+  fmt.Printf("[pid:%d][etype:%d][%s][task:%s][path:%s]",
     event.Proc.Pid, event.EType, event.Ifname,
-    event.Proc.Task, event.Proc.Full_Task_Path, event.Cgroup_id)
+    event.Proc.Task, event.Proc.Full_Task_Path)
   fmt.Printf("[%s:%d <-> %s:%d]",
     event.Saddr.String(), event.Sport, event.Daddr.String(), event.Dport)
   if event.Docker != nil {
-    fmt.Printf("[%s]", event.Docker.Dname)
+    fmt.Printf("[%s][cgroup:%s]", event.Docker.Dname, event.Cgroup_id[:16])
   }
   fmt.Printf("\n")
 }

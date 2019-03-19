@@ -1,3 +1,28 @@
+/*
+ *
+ * (C) 2018-19 - ntop.org
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ *
+ */
+
+/* 
+ * This package implements an interface to capture network events
+ * by using eBPF probes attached to Linux kernel functions.
+ * Note: only one event handler at a time is supported
+ */
 package goebpf_flow
 
 import (
@@ -16,7 +41,7 @@ import (
 
 void go_handleEvent(void *t_bpfctx, void *t_data, int t_datalen);
 
-static void* init (__u16 flags) {
+static void* wrapper_init_ebpf_flow (__u16 flags) {
   ebpfRetCode rc;
   return init_ebpf_flow(NULL, go_handleEvent, &rc, flags);
 }
@@ -34,8 +59,8 @@ import "C"
 /* ****************************************** */
 // ===== ===== KERNEL->USER EVENT ===== ===== //
 /* ****************************************** */
-const COMMAND_LEN = 16
-const IFNAMSIZ = 16
+const COMMAND_LEN = 16 // defined in sched.h
+const IFNAMSIZ = 16 // max is in limits.h -> NAME_MAX
 const CGROUP_ID_LEN = 64
 
 /*
@@ -47,7 +72,7 @@ const CGROUP_ID_LEN = 64
  *  II_digit (=0): tcp events
  *           (=1): udp events
  *  III_digit: discriminate the single event
- * The type is reported in eBPFevent->etype
+ * The type is reported in eEBPFevent->etype
  */
 type etype uint32
 const (
@@ -58,6 +83,20 @@ const (
   eUDP_SEND = 211
   eTCP_RETR = 200
   eTCP_CLOSE = 300
+)
+
+/*
+ * Supported flags to filter events when initializating libebpfflow
+ * Combinations of this flags allow to capture only subsets of events
+ */
+type libebpflow_flag uint16
+const (
+  LIBEBPF_TCP = 1 << 0
+  LIBEBPF_UDP = 1 << 1
+  LIBEBPF_INCOMING = 1 << 2
+  LIBEBPF_OUTCOMING = 1 << 3
+  LIBEBPF_TCP_CLOSE = 1 << 4
+  LIBEBPF_TCP_RETR = 1 << 5
 )
 
 type TaskInfo struct {
@@ -77,7 +116,7 @@ type KubeInfo struct {
   Ns string // Kubernetes namespace
 }
 
-type BPFevent struct {
+type EBPFevent struct {
   Ktime uint64 // Absolute kernel time
   Ifname string // net-dev name
   Event_time uint64 // Event time, filled during event preprocessing
@@ -97,25 +136,35 @@ type BPFevent struct {
   Father TaskInfo
 
   Cgroup_id string // Docker identifier
-  // Both next fields are initializated to NULL and populated only during preprocessing
+  // Both next fields are initializated to nil and populated only during preprocessing
   Docker *DockerInfo
   Kube *KubeInfo
 }
 
+/*
+ * Implements the methods to manage eBPF events. The correct usage requires:
+ *    1. Initialization with NewEbpflow 
+ *    2. Event polling by using the funcion PollEvent
+ *    3. Invocation of Term to clean resources
+ */
 type Ebpflow struct {
   ebpf unsafe.Pointer
 }
 
-var gHandler func(BPFevent)
+var gHandler func(EBPFevent)
 
-func NewEbppflow (handler func(BPFevent)) *Ebpflow {
-  res, _ := C.ebpf_flow_version()
-  fmt.Println("Invoking c library... \n", C.GoString(res))
-
-  // Initialization
-  ebpfp, _ := C.init(0)
+/*
+ * Creates a new Ebpflow object from which start capuring events
+ * Args: 
+ *    handler - function handler, called whenever a new event is captured
+ *              and the function Poll is invoked
+ *    flags - filter the events based on which bits are active. If the value
+ *            is zero all events are captured. Check libebpflow_flag for more details
+ */
+func NewEbpflow (handler func(EBPFevent), flags uint16) *Ebpflow {
+  ebpfp, _ := C.wrapper_init_ebpf_flow(0)
   if ebpfp == nil {
-    fmt.Println("Error")
+    fmt.Println("Error, unable to initialize libebpfflow")
     return nil
   }
 
@@ -123,14 +172,26 @@ func NewEbppflow (handler func(BPFevent)) *Ebpflow {
   return &Ebpflow{ ebpf: ebpfp }
 }
 
-func (e Ebpflow) Term () {
+/*
+ * Frees the resources used
+ */
+func (e Ebpflow) Close () {
   C.term_ebpf_flow(e.ebpf);
 }
 
-func (e Ebpflow) Poll(timeout int) {
+/*
+ * If a new event has been capured the handler provided on creation is 
+ * invoked with the new event as argument.
+ * Args:
+ *      timeout - waits at most timeout milliseconds if no new event is captured
+ */
+func (e Ebpflow) PollEvent(timeout int) {
   C.ebpf_poll_event(e.ebpf, (_Ctype_uint)(timeout));
 }
 
+/*
+ * Translates information concerning a task from a C structure to a Go struct
+ */
 func c2TaskInfo (p _Ctype_struct_taskInfo) TaskInfo {
   return TaskInfo {
     Pid: (uint32)(p.pid),
@@ -146,7 +207,7 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
   event := (* C.eBPFevent)(t_data)
   filled_event := C.preprocess(event);
 
-  goevent := BPFevent {
+  goevent := EBPFevent {
     Ktime: (uint64)(filled_event.ktime),
     Ifname: C.GoString(&filled_event.ifname[0]),
     Proto: (uint8)(filled_event.proto),
@@ -184,8 +245,8 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
       }
     }
   }
-  gHandler(goevent)
 
+  gHandler(goevent)
   C.ebpf_free_event(filled_event)
 }
 
