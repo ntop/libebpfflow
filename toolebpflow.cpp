@@ -321,8 +321,8 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   }
 
   // Container ----- //
-  printf("\t [cgroup: %s]", event.cgroup_id);
-  if (event.docker != NULL) printf("\t [docker: %.12s/%s] (docker)\n",
+  printf("\t [cgroup: %s]\n", event.cgroup_id);
+  if (event.docker != NULL) printf("\t [docker containerId/Name: %.12s/%s] \n",
     event.cgroup_id, event.docker->dname);
   if (event.kube !=  NULL) printf("\t [kube pod/ns: %s/%s] (kubernetes)\n",
     event.kube->pod, event.kube->ns);
