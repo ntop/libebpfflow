@@ -30,7 +30,7 @@
 /* ******************************************* */
 
 #define COMMAND_LEN       16
-#define CGROUP_ID_LEN     64
+#define CGROUP_ID_LEN     65
 
 /*
  * Events types are forged as follows:
@@ -100,7 +100,7 @@ typedef struct {
 
   struct taskInfo proc, father;
 
-  char cgroup_id[CGROUP_ID_LEN]; // Docker identifier
+  char cgroup_id[CGROUP_ID_LEN]; // Container identifier
   // Both next fields are initializated to NULL and populated only during preprocessing
   struct dockerInfo *docker;
   struct kubeInfo *kube;

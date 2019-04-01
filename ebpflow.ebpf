@@ -48,7 +48,7 @@ struct retr_entry {
 BPF_LRU_HASH3(retr_table, u32, struct retr_entry);
 
 
-#define CGROUP_ID_LEN 64 // max is in limits.h -> NAME_MAX
+#define CGROUP_ID_LEN 65 // max is in limits.h -> NAME_MAX
 
 #define COMMAND_LEN 16 // defined in sched.h
 
@@ -195,7 +195,7 @@ static void fill_cgroup_id(char *cgroup_id) {
     char *aus;
 
     bpf_probe_read(&aus, sizeof(void *), &knode->name);
-    bpf_probe_read_str(cgroup_id, CGROUP_ID_LEN-1, aus);
+    bpf_probe_read_str(cgroup_id, CGROUP_ID_LEN, aus);
   }
 }
 
