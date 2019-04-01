@@ -255,10 +255,10 @@ static void swap_event_peers(eBPFevent *ev) {
 /* ******************************************* */
 
 static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
-		      struct sock *sk,
-		      void *msg,
-		      u64 begin_ts,
-		      u8 proto, u8 swap_peers) {
+          struct sock *sk,
+          void *msg,
+          u64 begin_ts,
+          u8 proto, u8 swap_peers) {
   u16 sport = 0, dport = 0;
   u16 family;
   u64 delta;
@@ -315,7 +315,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
     ev->ip_version = 6;
   
     bpf_probe_read(&ev->addr.v6.saddr, sizeof(ev->addr.v6.saddr),
-		   sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
+       sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
     bpf_probe_read(&ev->addr.v6.daddr, sizeof(ev->addr.v6.daddr), sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
 
     if(/* Implement in a better way */
@@ -504,19 +504,19 @@ static u8 is_cached_entry(eBPFevent *ev) {
 #define ETHERTYPE_VLAN          0x8100          /* IEEE 802.1Q VLAN tagging */
 
 #define MAC_HEADER_SIZE 14;
-#define member_address(source_struct, source_member)			\
-  ({									\
-    void* __ret;							\
+#define member_address(source_struct, source_member)      \
+  ({                  \
+    void* __ret;              \
     __ret = (void*) (((char*)source_struct) + offsetof(typeof(*source_struct), source_member)); \
-    __ret;								\
+    __ret;                \
   })
-#define member_read(destination, source_struct, source_member)		\
-  do{									\
-    bpf_probe_read(							\
-		   destination,						\
-		   sizeof(source_struct->source_member),		\
-		   member_address(source_struct, source_member)		\
-								);	\
+#define member_read(destination, source_struct, source_member)    \
+  do{                 \
+    bpf_probe_read(             \
+       destination,           \
+       sizeof(source_struct->source_member),    \
+       member_address(source_struct, source_member)   \
+                );  \
   } while(0)
 
 static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent_packet) {
@@ -573,15 +573,15 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
 
     event.ip_version = 6;
     bpf_probe_read(&l4proto, sizeof(ipv6hdr->nexthdr),
-		   (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
+       (char*)ipv6hdr + offsetof(struct ipv6hdr, nexthdr));
 
     // Discard non UDP traffic
     if(l4proto != IPPROTO_UDP) return 0;
 
     bpf_probe_read(&event.addr.v6.saddr, sizeof(ipv6hdr->saddr),
-		   (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
+       (char*)ipv6hdr + offsetof(struct ipv6hdr, saddr));
     bpf_probe_read(&event.addr.v6.daddr, sizeof(ipv6hdr->daddr),
-		   (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
+       (char*)ipv6hdr + offsetof(struct ipv6hdr, daddr));
     offset = sizeof(*ipv6hdr);
     udphdr = (struct udphdr*)(&ip_header_address[offset]);
     bpf_probe_read(&event.sport, sizeof(u16), &udphdr->source);

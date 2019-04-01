@@ -82,9 +82,7 @@ int main(int argc, char **argv) {
 
   // Argument Parsing ----- //
   gDOCKER_ENABLE=1;
-  while ((ch = getopt_long(argc, argv,
-			   "rcutiodvh",
-			   long_opts, NULL)) != EOF) {
+  while ((ch = getopt_long(argc, argv, "rcutiodvh", long_opts, NULL)) != EOF) {
     switch (ch) {
     case 'u':
       flags |= LIBEBPF_UDP;
@@ -135,16 +133,16 @@ int main(int argc, char **argv) {
   }
 
   printf("Welcome to toolebpflow v.%s\n(C) 2018-19 ntop.org\n",
-	 ebpf_flow_version());
+   ebpf_flow_version());
 
   // Activating libebpflow ----- //
   printf("Initializing eBPF [%s]...\n",
 #ifdef NEW_EBF
-	 "New API"
+  "New API"
 #else
-	 "Legacy API"
+  "Legacy API"
 #endif
-	 );
+   );
   ebpf = init_ebpf_flow(NULL, handler, &rc, flags);
 
   if(!ebpf) {
@@ -166,19 +164,19 @@ int main(int argc, char **argv) {
 
 void help() {
   printf(
-	 "Usage: ebpflow [ OPTIONS ] \n"
-	 "   -h, --help      display this message \n"
-	 "   -t, --tcp       TCP events \n"
-	 "   -u, --udp       UDP events \n"
-	 "   -i, --in        incoming events (i.e. TCP accept and UDP receive) \n"
-	 "   -i, --in        outgoing events (i.e. TCP connect and UDP send) \n"
-	 "   -r, --retr      retransmissions events \n"
-	 "   -c, --tcpclose  TCP close events \n"
-	 "   -d, --docker    gather additional information concerning containers \n"
-	 "   -v, --verbose   vebose formatting"
-	 "(default: every event is shown) \n"
-	 "Note: please run as root \n"
-	 );
+   "Usage: ebpflow [ OPTIONS ] \n"
+   "   -h, --help      display this message \n"
+   "   -t, --tcp       TCP events \n"
+   "   -u, --udp       UDP events \n"
+   "   -i, --in        incoming events (i.e. TCP accept and UDP receive) \n"
+   "   -i, --in        outgoing events (i.e. TCP connect and UDP send) \n"
+   "   -r, --retr      retransmissions events \n"
+   "   -c, --tcpclose  TCP close events \n"
+   "   -d, --docker    gather additional information concerning containers \n"
+   "   -v, --verbose   vebose formatting"
+   "(default: every event is shown) \n"
+   "Note: please run as root \n"
+  );
 }
 
 
@@ -202,7 +200,7 @@ static char* intoaV4(unsigned int addr, char* buf, u_short bufLen) {
       *--cp = byte % 10 + '0';
       byte /= 10;
       if(byte > 0)
-	*--cp = byte + '0';
+  *--cp = byte + '0';
     }
     *--cp = '.';
     addr >>= 8;
@@ -267,22 +265,22 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
 
   // Event info ----- //
   printf("[%u.%06u]",
-	 (unsigned int)event.event_time.tv_sec,
-	 (unsigned int)event.event_time.tv_usec);
+    (unsigned int)event.event_time.tv_sec,
+    (unsigned int)event.event_time.tv_usec);
 
   // Task ----- //
   printf("[pid: %lu][uid: %lu][gid: %lu][%s] (task)\n",
-	 (long unsigned int)event.proc.gid,
-	 (long unsigned int)event.proc.uid,
-	 (long unsigned int)event.proc.pid,
-	 event.proc.task);
+    (long unsigned int)event.proc.gid,
+    (long unsigned int)event.proc.uid,
+    (long unsigned int)event.proc.pid,
+    event.proc.task);
 
   // Parent ----- //
   printf("\t [pid: %lu][uid: %lu][gid: %lu][%s] (parent)\n",
-	 (long unsigned int)event.father.gid,
-	 (long unsigned int)event.father.uid,
-	 (long unsigned int)event.father.pid,
-	 event.father.task);
+    (long unsigned int)event.father.gid,
+    (long unsigned int)event.father.uid,
+    (long unsigned int)event.father.pid,
+    event.father.task);
 
   // Network basic ----- //
   event_summary(&event, event_type_str, sizeof(event_type_str));
@@ -293,15 +291,16 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
     char buf1[32], buf2[32];
     
     printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net)\n",
-	   event.ifname,
-	   event.ip_version,
-	   event_type_str,
-	   intoaV4(htonl(ipv4_event->saddr), buf1, sizeof(buf1)), event.sport,
-	   intoaV4(htonl(ipv4_event->daddr), buf2, sizeof(buf2)), event.dport);
+      event.ifname,
+      event.ip_version,
+      event_type_str,
+      intoaV4(htonl(ipv4_event->saddr), buf1, sizeof(buf1)), event.sport,
+      intoaV4(htonl(ipv4_event->daddr), buf2, sizeof(buf2)), event.dport);
     // IPv4 Latency if available
-    if(strcmp(event_type_str, "TCP/conn") == 0)
+    if(strcmp(event_type_str, "TCP/conn") == 0) {
       printf("\t [latency: %.2f msec] (netstat) \n",
-	     ((float)event.latency_usec)/(float)1000);
+       ((float)event.latency_usec)/(float)1000);
+    }
   }
   else {
     // IPv6 Event type
@@ -310,22 +309,23 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
     char buf1[128], buf2[128];
     
     printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net) \n",
-	   event.ifname,
-	   event.ip_version,
-	   event_type_str,
-	   intoaV6(&ipv6_event->saddr, buf1, sizeof(buf1)), event.sport,
-	   intoaV6(&ipv6_event->saddr, buf2, sizeof(buf2)), event.dport);
+     event.ifname,
+     event.ip_version,
+     event_type_str,
+     intoaV6(&ipv6_event->saddr, buf1, sizeof(buf1)), event.sport,
+     intoaV6(&ipv6_event->saddr, buf2, sizeof(buf2)), event.dport);
     // IPv6 Latency if available
     if(strcmp(event_type_str, "TCP/conn") == 0)
       printf("\t [latency: %.2f msec] (netstat) \n",
-	     ((float)event.latency_usec)/(float)1000);
+          ((float)event.latency_usec)/(float)1000);
   }
 
   // Container ----- //
+  printf("\t [cgroup: %s]", event.cgroup_id);
   if (event.docker != NULL) printf("\t [docker: %.12s/%s] (docker)\n",
-				   event.cgroup_id, event.docker->dname);
+    event.cgroup_id, event.docker->dname);
   if (event.kube !=  NULL) printf("\t [kube pod/ns: %s/%s] (kubernetes)\n",
-				  event.kube->pod, event.kube->ns);
+    event.kube->pod, event.kube->ns);
 
   ebpf_free_event(&event);
 }
@@ -337,16 +337,16 @@ static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_kernel_data *e
   char buf1[32], buf2[32];
 
   printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s], uid/gid: %u/%u][addr: %s:%u <-> %s:%u]",
-	 e->ifname, e->sent_packet ? "Sent" : "Rcvd",
-	 (e->proto == IPPROTO_TCP) ? "TCP" : "UDP",
-	 e->proc.pid, e->proc.tid,
-	 (e->proc.full_task_path == NULL) ? e->proc.task : e->proc.full_task_path,
-	 e->proc.uid, e->proc.gid,
-	 e->father.pid, e->father.tid,
-	 (e->father.full_task_path == NULL) ? e->father.task : e->father.full_task_path,
-	 e->father.uid, e->father.gid,
-	 intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
-	 intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
+    e->ifname, e->sent_packet ? "Sent" : "Rcvd",
+    (e->proto == IPPROTO_TCP) ? "TCP" : "UDP",
+    e->proc.pid, e->proc.tid,
+    (e->proc.full_task_path == NULL) ? e->proc.task : e->proc.full_task_path,
+    e->proc.uid, e->proc.gid,
+    e->father.pid, e->father.tid,
+    (e->father.full_task_path == NULL) ? e->father.task : e->father.full_task_path,
+    e->father.uid, e->father.gid,
+    intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
+    intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
 
   if (e->docker != NULL) printf("[docker: %s/%s]", e->cgroup_id, e->docker->dname);
   if (e->kube !=  NULL) printf("[kube pod/ns: %s/%s]", e->kube->pod, e->kube->ns);
@@ -362,17 +362,17 @@ static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_kernel_data *e
   unsigned long long low = event->saddr & 0xFFFFFFFFFFFFFFFF;
 
   printf("[%s][%s][IPv6/%s][pid/tid: %u/%u (%s [%s]), uid/gid: %u/%u][father pid/tid: %u/%u (%s [%s]), uid/gid: %u/%u][addr: %s:%u <-> %s:%u]",
-	 e->ifname, e->sent_packet ? "S" : "R",
-	 (e->proto == IPPROTO_TCP) ? "TCP" : "UDP", e->proc.pid, e->proc.tid,
-	 e->proc.task, (e->proc.full_task_path == NULL) ? e->proc.task : e->proc.full_task_path,
-	 e->proc.uid, e->proc.gid,
-	 e->father.pid, e->father.tid,
-	 e->proc.task, (e->father.full_task_path == NULL) ? e->father.task : e->father.full_task_path,
-	 e->father.uid, e->father.gid,
-	 intoaV6(&event->saddr, buf1, sizeof(buf1)),
-	 e->sport,
-	 intoaV6(&event->daddr, buf2, sizeof(buf2)),
-	 e->dport);
+    e->ifname, e->sent_packet ? "S" : "R",
+    (e->proto == IPPROTO_TCP) ? "TCP" : "UDP", e->proc.pid, e->proc.tid,
+    e->proc.task, (e->proc.full_task_path == NULL) ? e->proc.task : e->proc.full_task_path,
+    e->proc.uid, e->proc.gid,
+    e->father.pid, e->father.tid,
+    e->proc.task, (e->father.full_task_path == NULL) ? e->father.task : e->father.full_task_path,
+    e->father.uid, e->father.gid,
+    intoaV6(&event->saddr, buf1, sizeof(buf1)),
+    e->sport,
+    intoaV6(&event->daddr, buf2, sizeof(buf2)),
+    e->dport);
 
   if (e->docker != NULL) printf("[docker: %s/%s]", e->cgroup_id, e->docker->dname);
   if (e->kube != NULL) printf("[kube pod/ns: %s/%s]", e->kube->pod, e->kube->ns);
@@ -395,12 +395,10 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
 #if 0
   printf("[latency %.1f usec] ",
-	 (float)(tp.tv_nsec-(event.ktime % 1000000000))/(float)1000);
+      (float)(tp.tv_nsec-(event.ktime % 1000000000))/(float)1000);
 #endif
 
-  printf("%u.%06u ",
-	 (unsigned int)event.event_time.tv_sec,
-	 (unsigned int)event.event_time.tv_usec);
+  printf("%u.%06u ", (unsigned int)event.event_time.tv_sec, (unsigned int)event.event_time.tv_usec);
 
   if(event.ip_version == 4)
     IPV4Handler(t_bpfctx, &event, &event.event.v4);
