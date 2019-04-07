@@ -21,7 +21,7 @@
 #include "config.h"
 
 #include "ebpf_flow.h"
-#include "docker_api.h"
+#include "container_info.h"
 
 #include <fstream>
 #include <iostream>

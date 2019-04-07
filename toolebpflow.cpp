@@ -323,7 +323,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   // Container ----- //
   if (event.runtime!=NULL && event.runtime[0] != '\0') /* Setted if info are available */ {
     printf("\t [containerID: %.12s][runtime: %s]", event.cgroup_id, event.runtime);
-    
+
     if (event.docker != NULL) 
       printf("[docker_name: %s]", event.docker->dname);
     if (event.kube != NULL) 
@@ -352,8 +352,14 @@ static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_kernel_data *e
     intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
     intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
 
-  if (e->docker != NULL) printf("[docker: %s/%s]", e->cgroup_id, e->docker->dname);
-  if (e->kube !=  NULL) printf("[kube pod/ns: %s/%s]", e->kube->pod, e->kube->ns);
+  if (e->runtime!=NULL && e->runtime[0] != '\0') /* Setted if info are available */ {
+    printf("[containerID: %.12s][runtime: %s]", e->cgroup_id, e->runtime);
+
+    if (e->docker != NULL) 
+      printf("[docker_name: %s]", e->docker->dname);
+    if (e->kube != NULL) 
+      printf("[kube_pod: %s][kube_ns: %s]", e->kube->pod, e->kube->ns);
+  } 
 
   if(e->proto == IPPROTO_TCP)
     printf("[latency: %.2f msec]", ((float)e->latency_usec)/(float)1000);
@@ -378,8 +384,15 @@ static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_kernel_data *e
     intoaV6(&event->daddr, buf2, sizeof(buf2)),
     e->dport);
 
-  if (e->docker != NULL) printf("[docker: %s/%s]", e->cgroup_id, e->docker->dname);
-  if (e->kube != NULL) printf("[kube pod/ns: %s/%s]", e->kube->pod, e->kube->ns);
+  // Container ----- //
+  if (e->runtime!=NULL && e->runtime[0] != '\0') /* Setted if info are available */ {
+    printf("[containerID: %.12s][runtime: %s]", e->cgroup_id, e->runtime);
+
+    if (e->docker != NULL) 
+      printf("[docker_name: %s]", e->docker->dname);
+    if (e->kube != NULL) 
+      printf("[kube_pod: %s][kube_ns: %s]", e->kube->pod, e->kube->ns);
+  } 
 
   if(e->proto == IPPROTO_TCP)
     printf("[latency: %.2f msec]", ((float)e->latency_usec)/(float)1000);
