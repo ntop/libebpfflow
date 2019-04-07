@@ -102,6 +102,7 @@ typedef struct {
 
   char cgroup_id[CGROUP_ID_LEN]; // Container identifier
   // Both next fields are initializated to NULL and populated only during preprocessing
+  char *runtime;
   struct dockerInfo *docker;
   struct kubeInfo *kube;
 } eBPFevent;
@@ -159,8 +160,9 @@ extern "C" {
    * Collect further information wrt the one contained in an eBPF event
    * @docker_flag: if 1 docker daemon will be queried to gather information
    *    concerning containers
+   * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
    */
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag);
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime);
   const char* ebpf_print_error(ebpfRetCode rc);
   /*
   * Cleans the resources used by an eBPFevent data structure

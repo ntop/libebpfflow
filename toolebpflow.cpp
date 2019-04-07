@@ -261,7 +261,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   // Preprocessing event ----- //
   // Copy needed as ebpf_preprocess_event will modify the memory
   memcpy(&event, e, sizeof(eBPFevent));
-  ebpf_preprocess_event(&event, gDOCKER_ENABLE);
+  ebpf_preprocess_event(&event, gDOCKER_ENABLE, NULL);
 
   // Event info ----- //
   printf("[%u.%06u]",
@@ -269,14 +269,14 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
     (unsigned int)event.event_time.tv_usec);
 
   // Task ----- //
-  printf("[pid: %lu][uid: %lu][gid: %lu][%s] (task)\n",
+  printf("[pid: %lu][uid: %lu][gid: %lu][%s] \n",
     (long unsigned int)event.proc.gid,
     (long unsigned int)event.proc.uid,
     (long unsigned int)event.proc.pid,
     event.proc.task);
 
   // Parent ----- //
-  printf("\t [pid: %lu][uid: %lu][gid: %lu][%s] (parent)\n",
+  printf("\t [parent][pid: %lu][uid: %lu][gid: %lu][%s]\n",
     (long unsigned int)event.father.gid,
     (long unsigned int)event.father.uid,
     (long unsigned int)event.father.pid,
@@ -290,7 +290,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
     // IPv4 Network info
     char buf1[32], buf2[32];
     
-    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net)\n",
+    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d]\n",
       event.ifname,
       event.ip_version,
       event_type_str,
@@ -298,7 +298,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
       intoaV4(htonl(ipv4_event->daddr), buf2, sizeof(buf2)), event.dport);
     // IPv4 Latency if available
     if(strcmp(event_type_str, "TCP/conn") == 0) {
-      printf("\t [latency: %.2f msec] (netstat) \n",
+      printf("\t [latency: %.2f msec] \n",
        ((float)event.latency_usec)/(float)1000);
     }
   }
@@ -308,7 +308,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
     // IPv6 Network info
     char buf1[128], buf2[128];
     
-    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] (net) \n",
+    printf("\t [%s][IPv%d][%s][addr: %s:%d <-> %s:%d] \n",
      event.ifname,
      event.ip_version,
      event_type_str,
@@ -316,16 +316,21 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
      intoaV6(&ipv6_event->saddr, buf2, sizeof(buf2)), event.dport);
     // IPv6 Latency if available
     if(strcmp(event_type_str, "TCP/conn") == 0)
-      printf("\t [latency: %.2f msec] (netstat) \n",
+      printf("\t [latency: %.2f msec] \n",
           ((float)event.latency_usec)/(float)1000);
   }
 
   // Container ----- //
-  printf("\t [cgroup: %s]\n", event.cgroup_id);
-  if (event.docker != NULL) printf("\t [docker containerId/Name: %.12s/%s] \n",
-    event.cgroup_id, event.docker->dname);
-  if (event.kube !=  NULL) printf("\t [kube pod/ns: %s/%s] (kubernetes)\n",
-    event.kube->pod, event.kube->ns);
+  if (event.runtime!=NULL && event.runtime[0] != '\0') /* Setted if info are available */ {
+    printf("\t [container ID/runtime: %.12s/%s]", event.cgroup_id, event.runtime);
+    
+    if (event.docker != NULL) 
+      printf("[docker name: %s]", event.docker->dname);
+    if (event.kube != NULL) 
+      printf("[kube pod/ns: %s/%s]", event.kube->pod, event.kube->ns);
+    printf("\n");
+  } 
+
 
   ebpf_free_event(&event);
 }
@@ -389,7 +394,7 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
   memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
 
-  ebpf_preprocess_event(&event, 1);
+  ebpf_preprocess_event(&event, 1, NULL);
 
   clock_gettime(CLOCK_MONOTONIC, &tp);
 

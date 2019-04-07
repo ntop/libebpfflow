@@ -41,9 +41,10 @@ struct cache_entry {
 
 struct docker_api {
   char docker_name[100];
-  int kube; // 1 if kubernetes info are available
   char kube_pod[60];
   char kube_namespace[60];
+  // Setted only if information concerning the container are found, empty otherwise
+  char runtime[15];
 };
 
 // Used to store libcurl partial results
@@ -72,6 +73,11 @@ void docker_api_clean ();
  */
 int update_namespaces();
 
+/*
+ * Create the entry if it does not exist, otherwise updates the content
+ */
+void update_cache_entry(char* t_cgroupid, struct cache_entry *t_dqr);
+
 /* ********************************************** */
 // ===== ===== QUERY TO DOCKER DAEMON ===== ===== //
 /* ********************************************** */
@@ -91,7 +97,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res);
  * update_query_cache - query to docker api from docker socket (/var/run/docker.sock) and caches the result.
  * @t_cgroupid: full length cgroup id
  * @t_dqr: filled with the information gathered if no error occurred
- * returns 0 if no error occurres otherwise -1
+ * returns 0 if no error occurres and container info has been found, otherwise -1
  * note: the same operation can be done using 
  *       `$ curl --unix-socket /var/run/docker.sock http://localhost/containers/<container-id>/json`
  */
@@ -103,7 +109,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr);
  * @t_cgroupid: full length cgroup id
  * @t_ns: target namespace
  * @t_dqr: filled with the information gathered if no error occurred
- * returns 0 if no error occurres otherwise -1
+ * returns 0 if no error occurres and container info has been found, otherwise -1
  * note: the same operation can be done using 
  *       `$ sudo ctr --namespace=<namespace> containers info <container-id>`
  */
@@ -119,7 +125,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr,
  * @t_dqs: will point to the cache entry if no error occurs (returns != -1)
  * returns 0 if the cache contains information concerning the container
  *      -1 if there no entry corresponding to the ID provided. 1 if 
- *    there is an entry associated with the ID but there aren't 
+ *    there is an entry associated with the ID but there isn't 
  *    information available
  */
 int docker_id_cached (char *t_cgroupid, struct cache_entry **t_dqs);
@@ -138,7 +144,8 @@ void clean_cache ();
  * @t_cgroupid: docker container ID
  * @t_dqs: will point to the container informations if no error occurs (returns != -1)
  * returns 0 if some info has been found, -1 otherwise
+ * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
  */
-int docker_id_get (char* t_cgroupid, docker_api **t_dqr);
+int docker_id_get (char* t_cgroupid, docker_api **t_dqr, char* runtime);
 
 #endif /* __DOCKER_API_HPP__ */

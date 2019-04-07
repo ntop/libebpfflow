@@ -48,13 +48,6 @@ void docker_api_init () {
   gQueryCache = new std::unordered_map<std::string, struct cache_entry*>;
   namespaces = new std::vector<std::string*>();
   update_namespaces();
-
-  // Check if the namespace already exists
-  printf("Namespace list: ");
-  for (std::vector<std::string*>::iterator s = namespaces->begin(); s != namespaces->end(); ++s) {
-    printf("%s, ", (*s)->c_str());
-  }
-  printf("\n");
 }
 
 void clean_cache_entry (struct cache_entry *e) {
@@ -76,6 +69,15 @@ void docker_api_clean () {
   gQueryCache = NULL;
 }
 
+void update_cache_entry(std::string t_cgroupid, struct cache_entry *t_dqr) {
+  std::pair<std::unordered_map<std::string, struct cache_entry*>::iterator, bool> res;
+  res = gQueryCache->insert(std::make_pair(t_cgroupid, t_dqr));
+
+  if (!res.second) /* Update */ {
+    free(res.first->second);
+    res.first->second = t_dqr;
+  }
+}
 
 /* ********************************************** */
 // ===== ===== QUERY TO DOCKER DAEMON ===== ===== //
@@ -107,6 +109,7 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp) {
  * return 0 if no error occurred -1 otherwise
  */
 int parse_response (char* buff, int buffsize, cache_entry **res) {
+  int res_found = 0; // 1 if some info has been found
   struct json_object *jobj=NULL, *jlabel=NULL;
   struct json_object *jdockername, *jconfig, *jpodname, *jkubens;
   struct json_tokener *jtok;
@@ -122,10 +125,15 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
     goto fail;
   }
 
-  // Trying to populate if not empty
+  // Initializing new cache entry value
   dqr = (struct docker_api *) malloc(sizeof(struct docker_api));
+  dqr->runtime[0] = '\0';
+  dqr->docker_name[0] = '\0';
+  dqr->kube_pod[0] = '\0';
+  dqr->kube_namespace[0] = '\0';
+
+  // Trying to populate if not empty
   entry->value = dqr;
-  dqr->kube = 0;
 
   // Parsing req to json
   jtok = json_tokener_new();
@@ -139,6 +147,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
 
   // Docker name
   if (json_object_object_get_ex(jobj, "Name", &jdockername)) {
+    res_found = 1;
     strcpy(dqr->docker_name, json_object_get_string(jdockername)+1);
   }
 
@@ -154,14 +163,18 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   if (jlabel != NULL) {
     // Etracting kube info
     if (json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
+      res_found = 1;
       strcpy(dqr->kube_pod, json_object_get_string(jpodname));
-      dqr->kube = 1;
     }
     // Etracting kube info
     if (json_object_object_get_ex(jlabel, "io.kubernetes.pod.namespace", &jkubens)) {
+      res_found = 1;
       strcpy(dqr->kube_namespace, json_object_get_string(jkubens));
-      dqr->kube = 1;
     }
+  }
+
+  if (!res_found) {
+    goto fail;
   }
 
   json_object_put(jobj);
@@ -218,8 +231,12 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
     dqr->accessed = 0;
   }
 
+  if (dqr->value!=NULL) {
+    strncpy(dqr->value->runtime, "docker", sizeof(dqr->value->runtime));
+  }
+
   // Adding entry to table and pointing argument to entry
-  gQueryCache->emplace(cgroupid, dqr);
+  update_cache_entry(cgroupid, dqr);
   *t_dqr = dqr;
 
   // Cleaning up
@@ -236,8 +253,9 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
   char *ns;
   cache_entry *dqr;
   char res[700];
-  char comm[120]; // 36 for "ctr --namespace= c i " + 64 for containerid + 20 for namespace 
+  char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace 
   char buff[120];
+  std::string cgroupid(t_cgroupid);
   std::vector<std::string*>::iterator s;
 
   for (s = namespaces->begin(); s != namespaces->end(); ++s) {
@@ -248,20 +266,25 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     // otherwise there's a risk of command injection
     /* ***** ***** ****************** ***** ***** */
     
-    // crafting: "ctr --namespace=<ns> c i <container-id>"
+    // crafting: "ctr --namespace=<ns> c i <container-id> "
     strncpy(comm, "ctr --namespace=", sizeof(comm));
     strncat(comm, ns, sizeof(comm)-strlen(comm)-1);
     strncat(comm, " c info ", sizeof(comm)-strlen(comm)-1);
     strncat(comm, t_cgroupid, sizeof(comm)-strlen(comm)-1);    
-    
+    strncat(comm, " 2>/dev/null", sizeof(comm)-strlen(comm)-1);
+
     // piping to the command
     fp = popen(comm, "r");
-    if (fp == NULL) {
+    if (fp == NULL) {      
+#ifdef DEBUG
       printf("containerd interaction failed \n");
+#endif
       return -1;
     }
     
     // concatenate output line by line. Kube info are provided in the fs 8 lines
+    strcpy(buff, "");
+    strcpy(res, "");
     for (int i=0; i<8; i++){
       if (fgets(buff, sizeof(buff)-1, fp) == NULL) break;
       strncat(res, buff, sizeof(res)-strlen(res)-1);
@@ -269,21 +292,26 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     // only kubernetes info are extracted, we need to repair the json
     strncat(res, "}}", sizeof(res)-strlen(res)-1);
     
+    pclose(fp);
+
     // handling json
     parse_response(res, sizeof(res), &dqr);
     if (dqr->value != NULL) {
       break;
     }
-    
-    // Cleaning for next iteration
-    strcpy(buff, "");
-    strcpy(res, "");
-    pclose(fp);
   }
-  if (dqr->value != NULL) {
-    printf("DEBUG: %s \n", dqr->value->kube_pod);
+  // At the end of the iteration we should have the value stored in dqr
+  // in both cases in which dqr is a dummy key or contains info
+   
+  if (dqr->value!=NULL) {
+    strncpy(dqr->value->runtime, "containerd", sizeof(dqr->value->runtime));
   }
-  return 0;
+
+  // Adding entry to table and pointing argument to entry
+  update_cache_entry(cgroupid, dqr);
+  *t_dqr = dqr;
+
+  return (dqr->value == NULL ? -1:0);
 }
 
 int update_namespaces () {
@@ -294,7 +322,9 @@ int update_namespaces () {
 
   fp = popen("ctr namespace ls", "r");
   if (fp == NULL) {
+#ifdef DEBUG
     printf("Failing to list namespaces \n");
+#endif
     return -1;
   }
   i = 0;
@@ -379,7 +409,7 @@ void clean_cache () {
 /* ******************************* */
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
-int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
+int docker_id_get (char* t_cgroupid, docker_api **t_dqr, char* runtime) {
   cache_entry* qr;
   int res;
   static time_t last = time(NULL);
@@ -394,16 +424,24 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr) {
   if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0)) {
     return -1;
   }
-
-  // res = docker_id_cached(t_cgroupid, &qr);
-
+  
+  res = docker_id_cached(t_cgroupid, &qr);
+  if(res != -1) /* Item is cached */ { 
+    *t_dqr = qr->value;
+    return (res==0 ? 0 : -1);
+  }
+ 
+  // Updating cache ----- //
+  res = 0;
+  // Dockerd
+  if (runtime==NULL || strcmp(runtime, "docker")==0) {
+    res = dockerd_update_query_cache(t_cgroupid, &qr);
+  }
   // Containerd interaction
-  containerd_update_query_cache(t_cgroupid, &qr);
+  if (res!=0 && (runtime==NULL || strcmp(runtime, "containerd")==0)) {
+    res = containerd_update_query_cache(t_cgroupid, &qr);
+  }
 
-  // containerd_update_query_cache(t_cgroupid, &qr, "k8s.io");
- // if (res == 0 || dockerd_update_query_cache(t_cgroupid, &qr) == 0) {
- //   *t_dqr = qr->value;
- //   return 0;
- // }
-  return -1;
+  *t_dqr = qr->value;
+  return res;
 }

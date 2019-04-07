@@ -243,7 +243,7 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag) {
+  void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime) {
     struct docker_api *container_info;
     struct dockerInfo *dinfo;
     struct kubeInfo *kinfo;
@@ -273,16 +273,21 @@ extern "C" {
     }
 
     // Attaching docker container info
-    event->docker = NULL, event->kube = NULL;
+    event->runtime = NULL;
+    event->docker = NULL; 
+    event->kube = NULL;
 
-    if(docker_flag) {
-      id_get_res = docker_id_get(event->cgroup_id, &container_info);
-      if(id_get_res >= 0) /* Docker info available */ {
+    if(docker_flag && docker_id_get(event->cgroup_id, &container_info, runtime)==0) {
+      // Runtime info
+      event->runtime = (char*) malloc(15 * sizeof(char));
+      strcpy(event->runtime, container_info->runtime);
+     
+      if(container_info->docker_name[0]!='\0') /* Docker info available */ {
         dinfo = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
         strcpy(dinfo->dname, container_info->docker_name);
         event->docker = dinfo;
       }
-      if(id_get_res >= 1) /* Kubernetes info available */ {
+      if(container_info->kube_pod[0]!='\0') /* Kubernetes info available */ {
         kinfo = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
         strcpy(kinfo->pod, container_info->kube_pod);
         strcpy(kinfo->ns, container_info->kube_namespace);
@@ -299,6 +304,10 @@ extern "C" {
 
     if(event->father.full_task_path != NULL)
       free(event->father.full_task_path);
+
+    if(event->runtime != NULL) {
+      free(event->runtime);
+    } 
 
     if(event->docker != NULL)
       free(event->docker);
