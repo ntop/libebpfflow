@@ -322,15 +322,14 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
 
   // Container ----- //
   if (event.runtime!=NULL && event.runtime[0] != '\0') /* Setted if info are available */ {
-    printf("\t [container ID/runtime: %.12s/%s]", event.cgroup_id, event.runtime);
+    printf("\t [containerID: %.12s][runtime: %s]", event.cgroup_id, event.runtime);
     
     if (event.docker != NULL) 
-      printf("[docker name: %s]", event.docker->dname);
+      printf("[docker_name: %s]", event.docker->dname);
     if (event.kube != NULL) 
-      printf("[kube pod/ns: %s/%s]", event.kube->pod, event.kube->ns);
+      printf("[kube_pod: %s][kube_ns: %s]", event.kube->pod, event.kube->ns);
     printf("\n");
   } 
-
 
   ebpf_free_event(&event);
 }

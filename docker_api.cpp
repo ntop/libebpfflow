@@ -44,7 +44,7 @@ std::vector<std::string*> *namespaces = NULL;
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
 /* ************************************************* */
-void docker_api_init () {
+void container_api_init () {
   gQueryCache = new std::unordered_map<std::string, struct cache_entry*>;
   namespaces = new std::vector<std::string*>();
   update_namespaces();
@@ -56,7 +56,7 @@ void clean_cache_entry (struct cache_entry *e) {
   free(e);
 }
 
-void docker_api_clean () {
+void container_api_clean () {
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
   if (gQueryCache==NULL) return;
@@ -104,7 +104,7 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp) {
   return realsize;
 }
 
-/* parse_response - fill a docker_api data structure with the information returned by a query to
+/* parse_response - fill a container_info data structure with the information returned by a query to
  *   the docker daemon
  * return 0 if no error occurred -1 otherwise
  */
@@ -114,7 +114,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   struct json_object *jdockername, *jconfig, *jpodname, *jkubens;
   struct json_tokener *jtok;
   struct cache_entry *entry;
-  struct docker_api *dqr;
+  struct container_info *dqr;
 
   // Creating cache entry
   entry = (struct cache_entry *) malloc(sizeof(struct cache_entry));
@@ -126,7 +126,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   }
 
   // Initializing new cache entry value
-  dqr = (struct docker_api *) malloc(sizeof(struct docker_api));
+  dqr = (struct container_info *) malloc(sizeof(struct container_info));
   dqr->runtime[0] = '\0';
   dqr->docker_name[0] = '\0';
   dqr->kube_pod[0] = '\0';
@@ -272,7 +272,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     strncat(comm, " c info ", sizeof(comm)-strlen(comm)-1);
     strncat(comm, t_cgroupid, sizeof(comm)-strlen(comm)-1);    
     strncat(comm, " 2>/dev/null", sizeof(comm)-strlen(comm)-1);
-
+    
     // piping to the command
     fp = popen(comm, "r");
     if (fp == NULL) {      
@@ -359,11 +359,11 @@ int update_namespaces () {
 // ===== ===== CACHE CHECK ===== ===== //
 /* *********************************** */
 /*
- * docker_id_cached - check if containers info have been cached
+ * container_id_cached - check if containers info have been cached
  * returns -1 if the query has not been cached 0 if some info are available
  *  1 for dummy keys
  */
-int docker_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
+int container_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
   std::string cgroupid(t_cgroupid);
   std::unordered_map<std::string, struct cache_entry*>::iterator res;
   res = gQueryCache->find(cgroupid);
@@ -409,7 +409,7 @@ void clean_cache () {
 /* ******************************* */
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
-int docker_id_get (char* t_cgroupid, docker_api **t_dqr, char* runtime) {
+int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime) {
   cache_entry* qr;
   int res;
   static time_t last = time(NULL);
@@ -425,7 +425,7 @@ int docker_id_get (char* t_cgroupid, docker_api **t_dqr, char* runtime) {
     return -1;
   }
   
-  res = docker_id_cached(t_cgroupid, &qr);
+  res = container_id_cached(t_cgroupid, &qr);
   if(res != -1) /* Item is cached */ { 
     *t_dqr = qr->value;
     return (res==0 ? 0 : -1);

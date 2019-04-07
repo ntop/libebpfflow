@@ -36,10 +36,10 @@
 
 struct cache_entry {
   int accessed;
-  struct docker_api *value;
+  struct container_info *value;
 };
 
-struct docker_api {
+struct container_info {
   char docker_name[100];
   char kube_pod[60];
   char kube_namespace[60];
@@ -61,12 +61,12 @@ struct ResponseBuffer {
  * Initializes the docker interaction library, make sure to call
  * it before invoking any other library function
  */
-void docker_api_init ();
+void container_api_init ();
 
 /*
  * Free the memory used by the library
  */
-void docker_api_clean ();
+void container_api_clean ();
 
 /*
  * Gather namespaces from ctr or docker-containerd-ctr
@@ -86,7 +86,7 @@ void update_cache_entry(char* t_cgroupid, struct cache_entry *t_dqr);
 static size_t
 WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp);
 
-/* parse_response - fill a docker_api data structure with the information returned by a query to
+/* parse_response - fill a container_info data structure with the information returned by a query to
  *   the docker daemon
  * buff: if NULL a dummy entry will be created (not added to the cache)
  * return 0 if no error occurred -1 otherwise 
@@ -119,7 +119,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr,
 // ===== ===== CACHE CHECK ===== ===== //
 /* *********************************** */
 /*
- * docker_id_cached - check if containers info have been cached
+ * container_id_cached - check if containers info have been cached
  *    and if some info are available stores them in *t_dqs
  * @t_cgroupid: docker container ID
  * @t_dqs: will point to the cache entry if no error occurs (returns != -1)
@@ -128,7 +128,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr,
  *    there is an entry associated with the ID but there isn't 
  *    information available
  */
-int docker_id_cached (char *t_cgroupid, struct cache_entry **t_dqs);
+int container_id_cached (char *t_cgroupid, struct cache_entry **t_dqs);
 
 /*
  * Clean the cache from queries far back in time and with less
@@ -140,12 +140,12 @@ void clean_cache ();
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
 /*
- * docker_id_get - sets a pointer to the associated information
+ * container_id_get - sets a pointer to the associated information
  * @t_cgroupid: docker container ID
  * @t_dqs: will point to the container informations if no error occurs (returns != -1)
  * returns 0 if some info has been found, -1 otherwise
  * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
  */
-int docker_id_get (char* t_cgroupid, docker_api **t_dqr, char* runtime);
+int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime);
 
 #endif /* __DOCKER_API_HPP__ */

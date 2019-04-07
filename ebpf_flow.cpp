@@ -127,7 +127,7 @@ extern "C" {
     // Default value is 0
     flags = (flags == 0) ? 0xFFFF : flags; 
 
-    docker_api_init();
+    container_api_init();
 
     if(code == "") {
       *rc = ebpf_unable_to_load_kernel_probe;
@@ -211,7 +211,7 @@ extern "C" {
 
   init_failed:
     if(bpf) delete bpf;
-    docker_api_clean();
+    container_api_clean();
     return(NULL);
   };
 
@@ -244,7 +244,7 @@ extern "C" {
   /* ******************************************* */
 
   void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime) {
-    struct docker_api *container_info;
+    struct container_info *container_info;
     struct dockerInfo *dinfo;
     struct kubeInfo *kinfo;
     int id_get_res, l;
@@ -277,7 +277,7 @@ extern "C" {
     event->docker = NULL; 
     event->kube = NULL;
 
-    if(docker_flag && docker_id_get(event->cgroup_id, &container_info, runtime)==0) {
+    if(docker_flag && container_id_get(event->cgroup_id, &container_info, runtime)==0) {
       // Runtime info
       event->runtime = (char*) malloc(15 * sizeof(char));
       strcpy(event->runtime, container_info->runtime);
@@ -320,7 +320,7 @@ extern "C" {
 
   void term_ebpf_flow(void *ebpfHook) {
     ebpf::BPF *bpf = (ebpf::BPF*)ebpfHook;
-    docker_api_clean();
+    container_api_clean();
 
     delete bpf;
   }
