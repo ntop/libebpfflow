@@ -40,6 +40,7 @@ struct cache_entry {
 };
 
 struct container_info {
+  // The next fields will be empty if no info is available
   char docker_name[100];
   char kube_pod[60];
   char kube_namespace[60];
