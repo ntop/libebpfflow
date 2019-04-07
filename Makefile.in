@@ -26,12 +26,12 @@ GOROOT=
 
 all: toolebpflow
 
-docker_api.o: docker_api.cpp docker_api.h
-	g++ -c $(CFLAGS) docker_api.cpp -o docker_api.o
+container_info.o: container_info.cpp container_info.h
+	g++ -c $(CFLAGS) container_info.cpp -o container_info.o
 
-libebpfflow.a: ebpf_flow.cpp ebpf_flow.h docker_api.o ebpflow.ebpf.enc
+libebpfflow.a: ebpf_flow.cpp ebpf_flow.h container_info.o ebpflow.ebpf.enc
 	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
-	ar rvs $@ ebpf_flow.o docker_api.o
+	ar rvs $@ ebpf_flow.o container_info.o
 
 toolebpflow: toolebpflow.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) toolebpflow.cpp -o $@ libebpfflow.a $(LIBS)
@@ -45,4 +45,4 @@ go_toolebpflow: toolebpflow.go Makefile libebpfflow.a
 	go build -o go_toolebpflow toolebpflow.go
 
 clean:
-	/bin/rm -f *~ goebpf_flow ebpftest go_toolebpflow docker_api.a libebpfflow.a *.o ebpflow.ebpf.enc
+	/bin/rm -f *~ goebpf_flow ebpftest go_toolebpflow container_info.a libebpfflow.a *.o ebpflow.ebpf.enc

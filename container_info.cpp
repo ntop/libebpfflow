@@ -18,7 +18,7 @@
  *
  */
 
-#include "docker_api.h"
+#include "container_info.h"
 
 #include "config.h"
 
