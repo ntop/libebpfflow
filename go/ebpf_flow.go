@@ -49,7 +49,7 @@ static void* wrapper_init_ebpf_flow (__u16 flags) {
 static eBPFevent* preprocess (eBPFevent *e) {  
   eBPFevent *event = malloc(sizeof(eBPFevent));
   memcpy(event, e, sizeof(eBPFevent));
-  ebpf_preprocess_event(event, 1);
+  ebpf_preprocess_event(event, 1, NULL);
   return event;
 }
 */
@@ -135,8 +135,9 @@ type EBPFevent struct {
   Proc TaskInfo
   Father TaskInfo
 
-  Cgroup_id string // Docker identifier
+  Cgroup_id string // Container identifier
   // Both next fields are initializated to nil and populated only during preprocessing
+  Runtime string
   Docker *DockerInfo
   Kube *KubeInfo
 }
@@ -186,13 +187,13 @@ func (e Ebpflow) Close () {
  *      timeout - waits at most timeout milliseconds if no new event is captured
  */
 func (e Ebpflow) PollEvent(timeout int) {
-  C.ebpf_poll_event(e.ebpf, (_Ctype_uint)(timeout));
+  C.ebpf_poll_event(e.ebpf, (C.uint)(timeout))
 }
 
 /*
  * Translates information concerning a task from a C structure to a Go struct
  */
-func c2TaskInfo (p _Ctype_struct_taskInfo) TaskInfo {
+func c2TaskInfo (p C.struct_taskInfo) TaskInfo {
   return TaskInfo {
     Pid: (uint32)(p.pid),
     Uid: (uint32)(p.uid),
@@ -234,9 +235,12 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
     daddr := ([16]byte)(ipv6.daddr)
     goevent.Daddr = net.ParseIP(string(daddr[:]))
   }
-  if (filled_event.docker != nil) {
-    goevent.Docker = &DockerInfo {
-      Dname: C.GoString(&filled_event.docker.dname[0]),
+  if (filled_event.runtime != nil) {
+    goevent.Runtime = C.GoString(filled_event.runtime)
+    if (filled_event.docker != nil) {
+      goevent.Docker = &DockerInfo {
+        Dname: C.GoString(&filled_event.docker.dname[0]),
+      }
     }
     if (filled_event.kube != nil) {
       goevent.Kube = &KubeInfo {

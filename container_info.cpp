@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <unordered_map>
 #include <vector>
+#include <regex>
 
 #include <curl/curl.h>
 #include <json-c/json.h>
@@ -257,14 +258,23 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
   char buff[120];
   std::string cgroupid(t_cgroupid);
   std::vector<std::string*>::iterator s;
+  
+
+  if (!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
+    return -1;
+  }
 
   for (s = namespaces->begin(); s != namespaces->end(); ++s) {
     ns = (char*) (*s)->c_str();
-    
+
     /* ***** ***** SANITIZE THE INPUT ***** ***** */
     // The container id and namespace MUST be sanitized
     // otherwise there's a risk of command injection
+    // cgroupid has been already sanitized
     /* ***** ***** ****************** ***** ***** */
+    if (!std::regex_match(**s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
+      return -1;
+    }
     
     // crafting: "ctr --namespace=<ns> c i <container-id> "
     strncpy(comm, "ctr --namespace=", sizeof(comm));

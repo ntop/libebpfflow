@@ -6,6 +6,7 @@ import (
     "syscall"
     "os/signal"
     "fmt"
+    "strings"
 )
 
 var gRUNNING bool = true
@@ -38,8 +39,8 @@ func event_handler (event ebpf_flow.EBPFevent) {
     event.Proc.Task, event.Proc.Full_Task_Path)
   fmt.Printf("[%s:%d <-> %s:%d]",
     event.Saddr.String(), event.Sport, event.Daddr.String(), event.Dport)
-  if event.Docker != nil {
-    fmt.Printf("[%s][cgroup:%s]", event.Docker.Dname, event.Cgroup_id[:16])
+  if strings.Compare(event.Runtime, "")!=0 {
+    fmt.Printf("[container_runtime: %s][container_id: %s]", event.Runtime, event.Cgroup_id[:16])
   }
   fmt.Printf("\n")
 }
