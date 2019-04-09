@@ -16,8 +16,16 @@ libebpfflow is a traffic visibility library based on eBPF able to compute networ
 ### Supported Languages
 * Golang
 * C/C++
+ 
+### Requirements
+You need a modern eBPF-enabled Linux distribution.
 
-# Build
+On Ubuntu 18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
+```sh
+$ sudo apt-get install libbpfcc-dev
+```
+
+### Build
 Library only
 ```sh
 $ make libebpfflow.a
@@ -29,14 +37,6 @@ $ make
 Go testing tool
 ```sh
 make go_toolebpflow
-```
- 
-### Requirements
-You need a modern eBPF-enabled Linux distribution.
-
-On Ubuntu 18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
-```sh
-$ sudo apt-get install libbpfcc-dev
 ```
 
 ### Testing
