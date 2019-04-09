@@ -140,6 +140,8 @@ extern "C" {
  
   /*
    * init_ebpf_flow - Initializes the library with a target event handler
+   * @ebpfHandler: the function used to handle events
+   * @rc: pointer to the variable in which to store the return code
    * @flags: restrict the number of events to generate by
    *    not tracing certain functions. Use default (i.e. 0 or 0xFFFF) to capture
    *    all events. Supported events are combinations of libebpflow_flag enum type
@@ -153,7 +155,9 @@ extern "C" {
    */
   void  term_ebpf_flow(void *ebpfHook);
   /*
-   * ebpf_poll_event - Pools an event from an ebpf::BPF object
+   * ebpf_poll_event: Pools an event from an ebpf::BPF object
+   * @ms_timeout: maximum time to wait for an event
+   * @ebpfHook: reference to the result of init_ebpf_flow invocation
    */
   void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
   /*

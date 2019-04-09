@@ -164,18 +164,19 @@ int main(int argc, char **argv) {
 
 void help() {
   printf(
-   "Usage: ebpflow [ OPTIONS ] \n"
-   "   -h, --help      display this message \n"
-   "   -t, --tcp       TCP events \n"
-   "   -u, --udp       UDP events \n"
-   "   -i, --in        incoming events (i.e. TCP accept and UDP receive) \n"
-   "   -i, --in        outgoing events (i.e. TCP connect and UDP send) \n"
-   "   -r, --retr      retransmissions events \n"
-   "   -c, --tcpclose  TCP close events \n"
-   "   -d, --docker    gather additional information concerning containers \n"
-   "   -v, --verbose   vebose formatting"
-   "(default: every event is shown) \n"
-   "Note: please run as root \n"
+    "toolebpflow: Traffic visibility tool based on libebpfflow. By default all events will be shown \n"
+    "Termination: CTRL-C \n"
+    "Usage: ebpflow [ OPTIONS ] \n"
+    "   -h, --help      display this message \n"
+    "   -t, --tcp       TCP events \n"
+    "   -u, --udp       UDP events \n"
+    "   -i, --in        incoming events (i.e. TCP accept and UDP receive) \n"
+    "   -o, --on        outgoing events (i.e. TCP connect and UDP send) \n"
+    "   -r, --retr      retransmissions events \n"
+    "   -c, --tcpclose  TCP close events \n"
+    "   -d, --docker    gather additional information concerning containers  (default: enabled)\n"
+    "   -v, --verbose   vebose formatting"
+    "Note: please run as root \n"
   );
 }
 
@@ -323,7 +324,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   // Container ----- //
   if (event.runtime!=NULL && event.runtime[0] != '\0') /* Setted if info are available */ {
     printf("\t [containerID: %.12s][runtime: %s]", event.cgroup_id, event.runtime);
-
+    
     if (event.docker != NULL) 
       printf("[docker_name: %s]", event.docker->dname);
     if (event.kube != NULL) 
