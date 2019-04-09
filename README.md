@@ -40,10 +40,10 @@ make go_toolebpflow
 ```
 
 ### Testing
-The library comes with two different tools: *toolebpflow* and *go\_toolebpflow*. The _Build_ section is reported how to build the tools.
-Both tools have been developed to show how to use the library, however *toolebpflow* displays all the information provided by *libebpfflow* along with some options to filter flow events. By default all events will be shown.
+The library comes with two different tools: *toolebpflow* and *go\_toolebpflow*. In the _Build_ section is reported how to build the tools. Although both tools were developed to show potential library usage and to provide guidance on how to use the library, *toolebpflow* displays all the information provided by *libebpfflow* and provides some options for filtering flow events while *go\_toolebpflow* displays only basic information concerning events.
 ```sh
 $ sudo ./toolebpflow -h
+toolebpflow: Traffic visibility tool based on libebpfflow. By default all events will be shown 
 Usage: ebpflow [ OPTIONS ] 
    -h, --help      display this message 
    -t, --tcp       TCP events 
