@@ -43,12 +43,12 @@ std::string b64decode(const void* data, const size_t len) {
   const size_t L = ((len + 3) / 4 - pad) * 4;
   std::string str(L / 4 * 3 + pad, '\0');
   const int B64index[256] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-            0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-            0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 62, 63, 62, 62, 63, 52, 53, 54, 55,
-            56, 57, 58, 59, 60, 61,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
-            7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,
-            0,  0,  0, 63,  0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-            41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 };
+			      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+			      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 62, 63, 62, 62, 63, 52, 53, 54, 55,
+			      56, 57, 58, 59, 60, 61,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
+			      7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,
+			      0,  0,  0, 63,  0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+			      41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 };
 
   for(size_t i = 0, j = 0; i < L; i += 4) {
     int n = B64index[p[i]] << 18 | B64index[p[i + 1]] << 12 | B64index[p[i + 2]] << 6 | B64index[p[i + 3]];
@@ -100,12 +100,12 @@ static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const ch
 /* ******************************************* */
 
 static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
-         const char *entry_point, bpf_probe_attach_type attach_type) {
+				 const char *entry_point, bpf_probe_attach_type attach_type) {
   int rc = bpf->attach_kprobe(queue_name, entry_point,
 #ifdef HAVE_NEW_EBPF
-            0,
+			      0,
 #endif
-            attach_type).code();
+			      attach_type).code();
 
 #ifdef DEBUG
   if(rc != 0)
@@ -119,13 +119,13 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 
 extern "C" {
   void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler,
-           ebpfRetCode *rc, u_int16_t flags) {
+		       ebpfRetCode *rc, u_int16_t flags) {
     ebpf::BPF *bpf = NULL;
     std::string code = b64decode(ebpf_code, strlen(ebpf_code));
     ebpf::StatusTuple open_res(0);
-    
+
     // Default value is 0
-    flags = (flags == 0) ? 0xFFFF : flags; 
+    flags = (flags == 0) ? 0xFFFF : flags;
 
     container_api_init();
 
@@ -149,57 +149,57 @@ extern "C" {
     // attaching probes ----- //
     if((flags & LIBEBPF_TCP) && (flags & LIBEBPF_OUTCOMING)) {
       if(attachEBPFKernelProbe(bpf,"tcp_v4_connect",
-             "trace_connect_entry", BPF_PROBE_ENTRY)
-   || attachEBPFKernelProbe(bpf, "tcp_v4_connect",
-          "trace_connect_v4_return", BPF_PROBE_RETURN)
-   || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
-          "trace_connect_entry", BPF_PROBE_ENTRY)
-   || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
-          "trace_connect_v6_return", BPF_PROBE_RETURN)
-   ) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			       "trace_connect_entry", BPF_PROBE_ENTRY)
+	 || attachEBPFKernelProbe(bpf, "tcp_v4_connect",
+				  "trace_connect_v4_return", BPF_PROBE_RETURN)
+	 || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
+				  "trace_connect_entry", BPF_PROBE_ENTRY)
+	 || attachEBPFKernelProbe(bpf, "tcp_v6_connect",
+				  "trace_connect_v6_return", BPF_PROBE_RETURN)
+	 ) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     if((flags & LIBEBPF_TCP) && (flags & LIBEBPF_INCOMING)) {
       if(attachEBPFKernelProbe(bpf, "inet_csk_accept",
-             "trace_tcp_accept", BPF_PROBE_RETURN)) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			       "trace_tcp_accept", BPF_PROBE_RETURN)) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     if((flags & LIBEBPF_UDP) && (flags & LIBEBPF_OUTCOMING)) {
       if(attachEBPFTracepoint(bpf, "net:net_dev_queue",
-            "trace_netif_tx_entry")) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			      "trace_netif_tx_entry")) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     if((flags & LIBEBPF_UDP) && (flags & LIBEBPF_INCOMING)) {
       if(attachEBPFTracepoint(bpf, "net:netif_receive_skb",
-            "trace_netif_rx_entry")) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			      "trace_netif_rx_entry")) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     if(flags & LIBEBPF_TCP_CLOSE) {
       if(attachEBPFKernelProbe(bpf, "tcp_set_state",
-             "trace_tcp_set_state", BPF_PROBE_ENTRY)) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			       "trace_tcp_set_state", BPF_PROBE_ENTRY)) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     if(flags & LIBEBPF_TCP_RETR) {
       if(attachEBPFKernelProbe(bpf, "tcp_retransmit_skb",
-             "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY)) {
-    *rc = ebpf_kprobe_attach_error;
-    goto init_failed;
-  }
+			       "trace_tcp_retransmit_skb", BPF_PROBE_ENTRY)) {
+	*rc = ebpf_kprobe_attach_error;
+	goto init_failed;
+      }
     }
 
     // opening output buffer ----- //
@@ -228,7 +228,7 @@ extern "C" {
       snprintf(pathname, sizeof(pathname), "/proc/%u/exe", pid);
 
       if(stat(pathname, &statbuf) == -1)
-  return(1); /* It looks like a kernel thread */
+	return(1); /* It looks like a kernel thread */
     }
 
     return(0);
@@ -274,14 +274,14 @@ extern "C" {
 
     // Attaching docker container info
     event->runtime = NULL;
-    event->docker = NULL; 
+    event->docker = NULL;
     event->kube = NULL;
 
     if(docker_flag && container_id_get(event->cgroup_id, &container_info, runtime)==0) {
       // Runtime info
       event->runtime = (char*) malloc(15 * sizeof(char));
       strcpy(event->runtime, container_info->runtime);
-     
+
       if(container_info->docker_name[0]!='\0') /* Docker info available */ {
         dinfo = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
         strcpy(dinfo->dname, container_info->docker_name);
@@ -307,7 +307,7 @@ extern "C" {
 
     if(event->runtime != NULL) {
       free(event->runtime);
-    } 
+    }
 
     if(event->docker != NULL)
       free(event->docker);

@@ -52,7 +52,7 @@ void container_api_init () {
 }
 
 void clean_cache_entry (struct cache_entry *e) {
-  if (e->value != NULL)
+  if(e->value != NULL)
     free(e->value);
   free(e);
 }
@@ -60,7 +60,7 @@ void clean_cache_entry (struct cache_entry *e) {
 void container_api_clean () {
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if (gQueryCache==NULL) return;
+  if(gQueryCache==NULL) return;
 
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
     clean_cache_entry(it->second);
@@ -74,7 +74,7 @@ void update_cache_entry(std::string t_cgroupid, struct cache_entry *t_dqr) {
   std::pair<std::unordered_map<std::string, struct cache_entry*>::iterator, bool> res;
   res = gQueryCache->insert(std::make_pair(t_cgroupid, t_dqr));
 
-  if (!res.second) /* Update */ {
+  if(!res.second) /* Update */ {
     free(res.first->second);
     res.first->second = t_dqr;
   }
@@ -122,7 +122,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   entry->value = NULL;
 
   // Dummy entry
-  if (buff == NULL) {
+  if(buff == NULL) {
     goto fail;
   }
 
@@ -142,18 +142,18 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   // We're not using it anymore, let's cleanup
   json_tokener_free(jtok);
 
-  if (jobj == NULL) {
+  if(jobj == NULL) {
     goto fail;
   };
 
   // Docker name
-  if (json_object_object_get_ex(jobj, "Name", &jdockername)) {
+  if(json_object_object_get_ex(jobj, "Name", &jdockername)) {
     res_found = 1;
     strcpy(dqr->docker_name, json_object_get_string(jdockername)+1);
   }
 
   // Container labels
-  if (json_object_object_get_ex(jobj, "Config", &jconfig)) /* json from docker api */ {
+  if(json_object_object_get_ex(jobj, "Config", &jconfig)) /* json from docker api */ {
     json_object_object_get_ex(jconfig, "Labels", &jlabel);
   }
   else /* json from containerd api */ {
@@ -161,20 +161,20 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   }
 
   // Kubernetes info if available
-  if (jlabel != NULL) {
+  if(jlabel != NULL) {
     // Etracting kube info
-    if (json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
+    if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
       res_found = 1;
       strcpy(dqr->kube_pod, json_object_get_string(jpodname));
     }
     // Etracting kube info
-    if (json_object_object_get_ex(jlabel, "io.kubernetes.pod.namespace", &jkubens)) {
+    if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.namespace", &jkubens)) {
       res_found = 1;
       strcpy(dqr->kube_namespace, json_object_get_string(jkubens));
     }
   }
 
-  if (!res_found) {
+  if(!res_found) {
     goto fail;
   }
 
@@ -183,10 +183,10 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   return 0;
 
  fail:
-  if (jobj) {
+  if(jobj) {
     json_object_put(jobj);
   }
-  if (dqr != NULL){
+  if(dqr != NULL){
     free(dqr);
   }
   entry->value = NULL;
@@ -206,7 +206,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   snprintf(url, sizeof(url), query_from_id, t_cgroupid);
 
   // Performing query ----- //
-  // Initializing memory buffer 
+  // Initializing memory buffer
   chunk.memory = (char*) malloc(1);
   chunk.size = 0;
   // Preparing libcurl
@@ -232,7 +232,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
     dqr->accessed = 0;
   }
 
-  if (dqr->value!=NULL) {
+  if(dqr->value!=NULL) {
     strncpy(dqr->value->runtime, "docker", sizeof(dqr->value->runtime));
   }
 
@@ -254,13 +254,13 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
   char *ns;
   cache_entry *dqr;
   char res[700];
-  char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace 
+  char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace
   char buff[120];
   std::string cgroupid(t_cgroupid);
   std::vector<std::string*>::iterator s;
-  
 
-  if (!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
+
+  if(!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
     return -1;
   }
 
@@ -272,48 +272,48 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     // otherwise there's a risk of command injection
     // cgroupid has been already sanitized
     /* ***** ***** ****************** ***** ***** */
-    if (!std::regex_match(**s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
+    if(!std::regex_match(**s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
       return -1;
     }
-    
+
     // crafting: "ctr --namespace=<ns> c i <container-id> "
     strncpy(comm, "ctr --namespace=", sizeof(comm));
     strncat(comm, ns, sizeof(comm)-strlen(comm)-1);
     strncat(comm, " c info ", sizeof(comm)-strlen(comm)-1);
-    strncat(comm, t_cgroupid, sizeof(comm)-strlen(comm)-1);    
+    strncat(comm, t_cgroupid, sizeof(comm)-strlen(comm)-1);
     strncat(comm, " 2>/dev/null", sizeof(comm)-strlen(comm)-1);
-    
+
     // piping to the command
     fp = popen(comm, "r");
-    if (fp == NULL) {      
+    if(fp == NULL) {
 #ifdef DEBUG
       printf("containerd interaction failed \n");
 #endif
       return -1;
     }
-    
+
     // concatenate output line by line. Kube info are provided in the fs 8 lines
     strcpy(buff, "");
     strcpy(res, "");
     for (int i=0; i<8; i++){
-      if (fgets(buff, sizeof(buff)-1, fp) == NULL) break;
+      if(fgets(buff, sizeof(buff)-1, fp) == NULL) break;
       strncat(res, buff, sizeof(res)-strlen(res)-1);
     }
     // only kubernetes info are extracted, we need to repair the json
     strncat(res, "}}", sizeof(res)-strlen(res)-1);
-    
+
     pclose(fp);
 
     // handling json
     parse_response(res, sizeof(res), &dqr);
-    if (dqr->value != NULL) {
+    if(dqr->value != NULL) {
       break;
     }
   }
   // At the end of the iteration we should have the value stored in dqr
   // in both cases in which dqr is a dummy key or contains info
-   
-  if (dqr->value!=NULL) {
+
+  if(dqr->value!=NULL) {
     strncpy(dqr->value->runtime, "containerd", sizeof(dqr->value->runtime));
   }
 
@@ -331,7 +331,7 @@ int update_namespaces () {
   char ns[20];
 
   fp = popen("ctr namespace ls", "r");
-  if (fp == NULL) {
+  if(fp == NULL) {
 #ifdef DEBUG
     printf("Failing to list namespaces \n");
 #endif
@@ -339,7 +339,7 @@ int update_namespaces () {
   }
   i = 0;
   while (fgets(ns, sizeof(ns)-1, fp) != NULL) {
-    if (i==0) /* Fs line is the title */ {
+    if(i==0) /* Fs line is the title */ {
       i++;
       continue;
     }
@@ -352,12 +352,12 @@ int update_namespaces () {
 
     // Check if the namespace already exists
     for (s = namespaces->begin(); s != namespaces->end(); ++s) {
-      if ((*s)->compare(*string_ns) == 0) { 
+      if((*s)->compare(*string_ns) == 0) {
         break;
       }
     }
     // Add if not exist
-    if (s == namespaces->end()) {
+    if(s == namespaces->end()) {
       namespaces->push_back(string_ns);
     }
   }
@@ -378,8 +378,8 @@ int container_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
   std::unordered_map<std::string, struct cache_entry*>::iterator res;
   res = gQueryCache->find(cgroupid);
 
-  if (res != gQueryCache->end()) {
-    if (res->second->value != NULL) {
+  if(res != gQueryCache->end()) {
+    if(res->second->value != NULL) {
       res->second->accessed += 1;
       *t_dqs = res->second;
       return 0;
@@ -396,12 +396,12 @@ void clean_cache () {
   std::vector<std::string>::iterator marked_it;
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if (gQueryCache==NULL) return;
+  if(gQueryCache==NULL) return;
 
   // Getting entries accessed less than MINTOCLEAN times
   for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
     entry = it->second;
-    if (entry->accessed < MINTOCLEAN || entry->value==NULL) {
+    if(entry->accessed < MINTOCLEAN || entry->value==NULL) {
       markedentries.push_back(it->first);
       clean_cache_entry(it->second);
     }
@@ -425,7 +425,7 @@ int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime) {
   static time_t last = time(NULL);
   time_t now = time(NULL);
 
-  if (difftime(now, last) > REFRESH_TIME /* Seconds */ ) {
+  if(difftime(now, last) > REFRESH_TIME /* Seconds */ ) {
     clean_cache();
     update_namespaces();
     last = now;
@@ -434,21 +434,21 @@ int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime) {
   if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0)) {
     return -1;
   }
-  
+
   res = container_id_cached(t_cgroupid, &qr);
-  if(res != -1) /* Item is cached */ { 
+  if(res != -1) /* Item is cached */ {
     *t_dqr = qr->value;
     return (res==0 ? 0 : -1);
   }
- 
+
   // Updating cache ----- //
   res = 0;
   // Dockerd
-  if (runtime==NULL || strcmp(runtime, "docker")==0) {
+  if(runtime==NULL || strcmp(runtime, "docker")==0) {
     res = dockerd_update_query_cache(t_cgroupid, &qr);
   }
   // Containerd interaction
-  if (res!=0 && (runtime==NULL || strcmp(runtime, "containerd")==0)) {
+  if(res!=0 && (runtime==NULL || strcmp(runtime, "containerd")==0)) {
     res = containerd_update_query_cache(t_cgroupid, &qr);
   }
 
