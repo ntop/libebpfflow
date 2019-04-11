@@ -252,17 +252,15 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
 int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   FILE *fp;
   char *ns;
-  cache_entry *dqr;
+  cache_entry *dqr = NULL;
   char res[700];
   char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace
   char buff[120];
   std::string cgroupid(t_cgroupid);
   std::vector<std::string*>::iterator s;
 
-
-  if(!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
-    return -1;
-  }
+  if(!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
+    return -1;  
 
   for (s = namespaces->begin(); s != namespaces->end(); ++s) {
     ns = (char*) (*s)->c_str();
@@ -310,12 +308,14 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
       break;
     }
   }
+
+  if(dqr == NULL) return(-1);
+  
   // At the end of the iteration we should have the value stored in dqr
   // in both cases in which dqr is a dummy key or contains info
 
-  if(dqr->value!=NULL) {
-    strncpy(dqr->value->runtime, "containerd", sizeof(dqr->value->runtime));
-  }
+  if(dqr->value != NULL)
+    strncpy(dqr->value->runtime, "containerd", sizeof(dqr->value->runtime));  
 
   // Adding entry to table and pointing argument to entry
   update_cache_entry(cgroupid, dqr);
