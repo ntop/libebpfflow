@@ -35,6 +35,7 @@
 #include <json-c/json.h>
 
 #define DOCKERD_SOCK_PATH "/var/run/docker.sock"
+#define MICROK8S_CTR_PATH "/snap/bin/microk8s.ctr"
 
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
@@ -43,14 +44,22 @@ std::unordered_map<std::string, struct cache_entry*> *gQueryCache = NULL;
 // Namespace cache
 std::vector<std::string*> *namespaces = NULL;
 
+static char ctr_path[64];
 
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
 /* ************************************************* */
 void container_api_init () {
+  struct stat s;
+
   gQueryCache = new std::unordered_map<std::string, struct cache_entry*>;
   namespaces = new std::vector<std::string*>();
   update_namespaces();
+
+  if(stat(MICROK8S_CTR_PATH, &s) == 0)
+    strcpy(ctr_path, MICROK8S_CTR_PATH);
+  else
+    strcpy(ctr_path, "ctr");
 }
 
 /* **************************************************** */
@@ -282,17 +291,12 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     // otherwise there's a risk of command injection
     // cgroupid has been already sanitized
     /* ***** ***** ****************** ***** ***** */
-    if(!std::regex_match(**s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"))) {
-      return -1;
-    }
+    if(!std::regex_match(**s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
+      return -1;    
 
-    // crafting: "ctr --namespace=<ns> c i <container-id> "
-    strncpy(comm, "ctr --namespace=", sizeof(comm));
-    strncat(comm, ns, sizeof(comm)-strlen(comm)-1);
-    strncat(comm, " c info ", sizeof(comm)-strlen(comm)-1);
-    strncat(comm, t_cgroupid, sizeof(comm)-strlen(comm)-1);
-    strncat(comm, " 2>/dev/null", sizeof(comm)-strlen(comm)-1);
-
+    snprintf(comm, sizeof(comm), "%s --namespace=%s  c info %s 2>/dev/null",
+	     ctr_path, ns, t_cgroupid);
+    
     // piping to the command
     fp = popen(comm, "r");
     if(fp == NULL) {
@@ -343,8 +347,11 @@ int update_namespaces () {
   std::vector<std::string*>::iterator s;
   int i = 0;
   char ns[20];
+  char buf[64];
 
-  fp = popen("ctr namespace ls 2>/dev/null", "r");
+  snprintf(buf, sizeof(buf), "%s namespace ls 2>/dev/null", ctr_path);
+  
+  fp = popen(buf, "r");
   if(fp == NULL) {
 #ifdef DEBUG
     printf("Failing to list namespaces \n");
