@@ -26,6 +26,7 @@
 #include <string.h>
 #include <time.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unordered_map>
 #include <vector>
 #include <regex>
@@ -33,6 +34,7 @@
 #include <curl/curl.h>
 #include <json-c/json.h>
 
+#define DOCKERD_SOCK_PATH "/var/run/docker.sock"
 
 // Docker daemon query url
 const char* query_from_id = "http://localhost/containers/%s/json";
@@ -51,24 +53,30 @@ void container_api_init () {
   update_namespaces();
 }
 
+/* **************************************************** */
+
 void clean_cache_entry (struct cache_entry *e) {
   if(e->value != NULL)
     free(e->value);
   free(e);
 }
 
+/* **************************************************** */
+
 void container_api_clean () {
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if(gQueryCache==NULL) return;
+  if(gQueryCache == NULL) return;
 
-  for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
+  for(it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
     clean_cache_entry(it->second);
   }
 
   delete gQueryCache;
   gQueryCache = NULL;
 }
+
+/* **************************************************** */
 
 void update_cache_entry(std::string t_cgroupid, struct cache_entry *t_dqr) {
   std::pair<std::unordered_map<std::string, struct cache_entry*>::iterator, bool> res;
@@ -83,8 +91,7 @@ void update_cache_entry(std::string t_cgroupid, struct cache_entry *t_dqr) {
 /* ********************************************** */
 // ===== ===== QUERY TO DOCKER DAEMON ===== ===== //
 /* ********************************************** */
-static size_t
-WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp) {
+static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp) {
   size_t realsize = size * nmemb;
   struct ResponseBuffer *mem = (struct ResponseBuffer *) userp;
 
@@ -104,6 +111,8 @@ WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp) {
 
   return realsize;
 }
+
+/* **************************************************** */
 
 /* parse_response - fill a container_info data structure with the information returned by a query to
  *   the docker daemon
@@ -127,11 +136,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   }
 
   // Initializing new cache entry value
-  dqr = (struct container_info *) malloc(sizeof(struct container_info));
-  dqr->runtime[0] = '\0';
-  dqr->docker_name[0] = '\0';
-  dqr->kube_pod[0] = '\0';
-  dqr->kube_namespace[0] = '\0';
+  dqr = (struct container_info *)calloc(1, sizeof(struct container_info));
 
   // Trying to populate if not empty
   entry->value = dqr;
@@ -160,7 +165,7 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
     json_object_object_get_ex(jobj, "Labels", &jlabel);
   }
 
-  // Kubernetes info if available
+  // Kubernetes info (when available)
   if(jlabel != NULL) {
     // Etracting kube info
     if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
@@ -183,17 +188,18 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
   return 0;
 
  fail:
-  if(jobj) {
+  if(jobj)
     json_object_put(jobj);
-  }
-  if(dqr != NULL){
+  
+  if(dqr != NULL)
     free(dqr);
-  }
+  
   entry->value = NULL;
   *res = entry;
   return -1;
 }
 
+/* **************************************************** */
 
 int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   CURL *curl_handle;
@@ -202,9 +208,14 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   struct ResponseBuffer chunk;
   cache_entry *dqr;
   std::string cgroupid(t_cgroupid);
+  struct stat s;
+
+  if(stat(DOCKERD_SOCK_PATH, &s) == -1)
+    return(-1); /* Docker not found */
+	   
   // Crafting query
   snprintf(url, sizeof(url), query_from_id, t_cgroupid);
-
+    
   // Performing query ----- //
   // Initializing memory buffer
   chunk.memory = (char*) malloc(1);
@@ -214,7 +225,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   // URL
   curl_easy_setopt(curl_handle, CURLOPT_URL, url);
   // Callback && Callback arguments
-  curl_easy_setopt(curl_handle, CURLOPT_UNIX_SOCKET_PATH, "/var/run/docker.sock");
+  curl_easy_setopt(curl_handle, CURLOPT_UNIX_SOCKET_PATH, DOCKERD_SOCK_PATH);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
   curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
 
@@ -248,6 +259,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   return (dqr->value == NULL ? -1:0);
 }
 
+/* **************************************************** */
 
 int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   FILE *fp;
@@ -262,7 +274,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
   if(!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
     return -1;  
 
-  for (s = namespaces->begin(); s != namespaces->end(); ++s) {
+  for(s = namespaces->begin(); s != namespaces->end(); ++s) {
     ns = (char*) (*s)->c_str();
 
     /* ***** ***** SANITIZE THE INPUT ***** ***** */
@@ -293,7 +305,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
     // concatenate output line by line. Kube info are provided in the fs 8 lines
     strcpy(buff, "");
     strcpy(res, "");
-    for (int i=0; i<8; i++){
+    for(int i=0; i<8; i++){
       if(fgets(buff, sizeof(buff)-1, fp) == NULL) break;
       strncat(res, buff, sizeof(res)-strlen(res)-1);
     }
@@ -324,21 +336,23 @@ int containerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr)
   return (dqr->value == NULL ? -1:0);
 }
 
+/* **************************************************** */
+
 int update_namespaces () {
   FILE *fp;
   std::vector<std::string*>::iterator s;
   int i = 0;
   char ns[20];
 
-  fp = popen("ctr namespace ls", "r");
+  fp = popen("ctr namespace ls 2>/dev/null", "r");
   if(fp == NULL) {
 #ifdef DEBUG
     printf("Failing to list namespaces \n");
 #endif
     return -1;
   }
-  i = 0;
-  while (fgets(ns, sizeof(ns)-1, fp) != NULL) {
+  
+  while(fgets(ns, sizeof(ns)-1, fp) != NULL) {
     if(i==0) /* Fs line is the title */ {
       i++;
       continue;
@@ -351,7 +365,7 @@ int update_namespaces () {
     string_ns->erase(last+1, string_ns->length());
 
     // Check if the namespace already exists
-    for (s = namespaces->begin(); s != namespaces->end(); ++s) {
+    for(s = namespaces->begin(); s != namespaces->end(); ++s) {
       if((*s)->compare(*string_ns) == 0) {
         break;
       }
@@ -364,6 +378,7 @@ int update_namespaces () {
   return -1;
 }
 
+/* **************************************************** */
 
 /* *********************************** */
 // ===== ===== CACHE CHECK ===== ===== //
@@ -389,6 +404,7 @@ int container_id_cached (char* t_cgroupid, struct cache_entry **t_dqs) {
   return -1;
 }
 
+/* **************************************************** */
 
 void clean_cache () {
   struct cache_entry *entry;
@@ -396,39 +412,43 @@ void clean_cache () {
   std::vector<std::string>::iterator marked_it;
   std::unordered_map<std::string, struct cache_entry*>::iterator it;
 
-  if(gQueryCache==NULL) return;
+  if(gQueryCache == NULL) return;
 
   // Getting entries accessed less than MINTOCLEAN times
-  for (it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
+  for(it=gQueryCache->begin(); it!=gQueryCache->end(); it++) {
     entry = it->second;
-    if(entry->accessed < MINTOCLEAN || entry->value==NULL) {
+    if(entry->accessed < MINTOCLEAN || entry->value == NULL) {
       markedentries.push_back(it->first);
       clean_cache_entry(it->second);
-    }
-    else {
+    } else {
       it->second->accessed = 0;
     }
   }
 
-  for (marked_it=markedentries.begin(); marked_it!=markedentries.end(); marked_it++) {
+  for(marked_it=markedentries.begin(); marked_it!=markedentries.end(); marked_it++) {
     gQueryCache->erase(*marked_it);
   }
 }
 
+/* **************************************************** */
 
 /* ******************************* */
 // ===== ===== QUERIES ===== ===== //
 /* ******************************* */
-int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime) {
+int container_id_get(char* t_cgroupid, container_info **t_dqr, char* runtime) {
   cache_entry* qr;
   int res;
   static time_t last = time(NULL);
   time_t now = time(NULL);
 
   if(difftime(now, last) > REFRESH_TIME /* Seconds */ ) {
+    int rc;
+    
     clean_cache();
-    update_namespaces();
+    rc = update_namespaces();
     last = now;
+    
+    if(rc == -1) return(rc);
   }
 
   if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0)) {
@@ -444,14 +464,14 @@ int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime) {
   // Updating cache ----- //
   res = 0;
   // Dockerd
-  if(runtime==NULL || strcmp(runtime, "docker")==0) {
-    res = dockerd_update_query_cache(t_cgroupid, &qr);
-  }
+  if((runtime == NULL) || (strcmp(runtime, "docker") == 0))
+    res = dockerd_update_query_cache(t_cgroupid, &qr);  
+  
   // Containerd interaction
-  if(res!=0 && (runtime==NULL || strcmp(runtime, "containerd")==0)) {
-    res = containerd_update_query_cache(t_cgroupid, &qr);
-  }
+  if((res != 0) && ((runtime == NULL) || (strcmp(runtime, "containerd") == 0)))
+    res = containerd_update_query_cache(t_cgroupid, &qr);  
 
   *t_dqr = qr->value;
   return res;
 }
+

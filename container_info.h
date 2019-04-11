@@ -33,19 +33,18 @@
 // Cache cleaning and namespace update interval in seconds
 #define REFRESH_TIME 30
 
-
-struct cache_entry {
-  int accessed;
-  struct container_info *value;
-};
-
 struct container_info {
   // The next fields will be empty if no info is available
   char docker_name[100];
   char kube_pod[60];
   char kube_namespace[60];
-  // Setted only if information concerning the container are found, empty otherwise
+  // Set only if container info is found, empty otherwise
   char runtime[15];
+};
+
+struct cache_entry {
+  int accessed;
+  struct container_info *value;
 };
 
 // Used to store libcurl partial results
