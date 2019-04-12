@@ -271,9 +271,9 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
 
   // Task ----- //
   printf("[pid: %lu][uid: %lu][gid: %lu][%s] \n",
-	 (long unsigned int)event.proc.gid,
-	 (long unsigned int)event.proc.uid,
 	 (long unsigned int)event.proc.pid,
+	 (long unsigned int)event.proc.uid,
+	 (long unsigned int)event.proc.gid,
 	 event.proc.task);
 
   // Parent ----- //
@@ -322,7 +322,7 @@ static void verboseHandleEvent(void* t_bpfctx, void* t_data, int t_datasize) {
   }
 
   // Container ----- //
-  if(event.runtime!=NULL && event.runtime[0] != '\0') /* Setted if info are available */ {
+  if((event.runtime != NULL) && (event.runtime[0] != '\0')) /* Set if info are available */ {
     printf("\t [containerID: %.12s][runtime: %s]", event.cgroup_id, event.runtime);
 
     if(event.docker != NULL)
@@ -353,7 +353,7 @@ static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_kernel_data *e
 	 intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
 	 intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
 
-  if(e->runtime!=NULL && e->runtime[0] != '\0') /* Setted if info are available */ {
+  if((e->runtime != NULL) && (e->runtime[0] != '\0')) /* Set if info are available */ {
     printf("[containerID: %.12s][runtime: %s]", e->cgroup_id, e->runtime);
 
     if(e->docker != NULL)
@@ -386,7 +386,7 @@ static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_kernel_data *e
 	 e->dport);
 
   // Container ----- //
-  if(e->runtime!=NULL && e->runtime[0] != '\0') /* Setted if info are available */ {
+  if((e->runtime != NULL) && (e->runtime[0] != '\0')) /* Set if info are available */ {
     printf("[containerID: %.12s][runtime: %s]", e->cgroup_id, e->runtime);
 
     if(e->docker != NULL)
