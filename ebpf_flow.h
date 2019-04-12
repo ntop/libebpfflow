@@ -148,18 +148,22 @@ extern "C" {
    * returns a pointer to an ebpf::BPF object upon success NULL otherwise
    */
   void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, 
-    ebpfRetCode *rc, u_int16_t flags /* default 0 to capture all events */);
+		       ebpfRetCode *rc, u_int16_t flags /* default 0 to capture all events */);
+
   /*
    * term_ebpf_flow - Cleans the resources used by the library
    * @ebpfHook: a pointer to an ebpf::BPF, that is the one returned by init_ebpf_flow 
-   */
-  void  term_ebpf_flow(void *ebpfHook);
+   */  
+  void term_ebpf_flow(void *ebpfHook);
+  
   /*
    * ebpf_poll_event: Pools an event from an ebpf::BPF object
    * @ms_timeout: maximum time to wait for an event
    * @ebpfHook: reference to the result of init_ebpf_flow invocation
+   * return 1 if an event has been processed, 0 in case of timeout.
    */
-  void  ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
+  int ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
+  
   /*
    * Collect further information wrt the one contained in an eBPF event
    * @docker_flag: if 1 docker daemon will be queried to gather information
@@ -167,7 +171,9 @@ extern "C" {
    * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
    */
   void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime);
+
   const char* ebpf_print_error(ebpfRetCode rc);
+
   /*
   * Cleans the resources used by an eBPFevent data structure
   */

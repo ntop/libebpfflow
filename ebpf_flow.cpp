@@ -327,10 +327,13 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_poll_event(void *ebpfHook, u_int ms_timeout) {
+  int ebpf_poll_event(void *ebpfHook, u_int ms_timeout) {
     ebpf::BPF *bpf = (ebpf::BPF*)ebpfHook;
 
-    bpf->poll_perf_buffer("ebpf_events", ms_timeout);
+    /* NOTE: some library versions do not return a value [TODO] */
+    /* int rc = */ bpf->poll_perf_buffer("ebpf_events", ms_timeout);
+
+    return(1);
   }
 
   /* ******************************************* */
