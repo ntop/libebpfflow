@@ -329,7 +329,7 @@ int update_namespaces() {
     printf("[%s:%u] Found namespeace %s\n", __FILE__, __LINE__, space);
 #endif
 
-    namespaces.insert(space);
+    namespaces.insert(ns);
   }
 
   pclose(fp);
