@@ -92,8 +92,10 @@ void update_cache_entry(std::string t_cgroupid, struct cache_entry *t_dqr) {
   res = gQueryCache->insert(std::make_pair(t_cgroupid, t_dqr));
 
   if(!res.second) /* Update */ {
-    free(res.first->second);
-    res.first->second = t_dqr;
+    void *p = res.first->second;
+
+    (*gQueryCache)[t_cgroupid] = t_dqr;
+    if(p) free(p);
   }
 }
 
@@ -127,7 +129,7 @@ static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, vo
  *   the docker daemon
  * return 0 if no error occurred -1 otherwise
  */
-int parse_response (char* buff, int buffsize, cache_entry **res) {
+int parse_response(char* buff, int buffsize, cache_entry **res) {
   int res_found = 0; // 1 if some info has been found
   struct json_object *jobj=NULL, *jlabel=NULL;
   struct json_object *jdockername, *jconfig, *jpodname, *jkubens;
@@ -137,6 +139,9 @@ int parse_response (char* buff, int buffsize, cache_entry **res) {
 
   // Creating cache entry
   entry = (struct cache_entry *) malloc(sizeof(struct cache_entry));
+  if(!entry)
+    return(-1);
+  
   entry->value = NULL;
 
   // Dummy entry
@@ -245,16 +250,16 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
 #ifdef DEBUG
     printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
 #endif
-    parse_response(NULL, 0, &dqr);
+    if(parse_response(NULL, 0, &dqr) == -1)
+      return(-1);
   } else {
     parse_response(chunk.memory, chunk.size, &dqr);
     // Setting accessed times to zero
     dqr->accessed = 0;
   }
 
-  if(dqr->value!=NULL) {
-    strncpy(dqr->value->runtime, "docker", sizeof(dqr->value->runtime));
-  }
+  if(dqr->value != NULL)
+    strncpy(dqr->value->runtime, "docker", sizeof(dqr->value->runtime));  
 
   // Adding entry to table and pointing argument to entry
   update_cache_entry(cgroupid, dqr);
@@ -265,7 +270,7 @@ int dockerd_update_query_cache (char* t_cgroupid, struct cache_entry **t_dqr) {
   free(chunk.memory);
   curl_global_cleanup();
 
-  return (dqr->value == NULL ? -1:0);
+  return(dqr->value == NULL ? -1:0);
 }
 
 /* **************************************************** */
@@ -382,6 +387,9 @@ int update_namespaces () {
       namespaces->push_back(string_ns);
     }
   }
+
+  pclose(fp);
+  
   return -1;
 }
 
