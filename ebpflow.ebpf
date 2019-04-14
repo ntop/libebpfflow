@@ -110,8 +110,15 @@ typedef struct {
 
   struct taskInfo proc, father;
   char cgroup_id[CGROUP_ID_LEN];
-  void *docker;
-  void *kube;
+
+  struct {
+    char *dname; /* Docker container name */
+  } docker;
+  
+  struct {
+    char *pod;
+    char *ns; /* Kubernetes namespace */    
+  } kube;
 } eBPFevent;
 
 BPF_PERF_OUTPUT(ebpf_events);

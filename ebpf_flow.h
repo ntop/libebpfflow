@@ -72,15 +72,6 @@ struct ipv6_kernel_data {
   unsigned __int128 daddr;  
 };
 
-struct dockerInfo {
-  char dname[100]; // Docker container name
-};
-
-struct kubeInfo {
-  char pod[60];
-  char ns[60]; // Kubernetes namespace
-};
-
 typedef struct {
   __u64 ktime; // Absolute kernel time
   char ifname[IFNAMSIZ]; // net-dev name
@@ -101,10 +92,16 @@ typedef struct {
   struct taskInfo proc, father;
 
   char cgroup_id[CGROUP_ID_LEN]; // Container identifier
-  // Both next fields are initializated to NULL and populated only during preprocessing
-  char *runtime;
-  struct dockerInfo *docker;
-  struct kubeInfo *kube;
+
+  // Next fields are initializated to NULL and populated only during preprocessing
+  struct {
+    char *dname; /* Docker container name */
+  } docker;
+  
+  struct {
+    char *pod;
+    char *ns; /* Kubernetes namespace */    
+  } kube;
 } eBPFevent;
 
 typedef enum {
@@ -166,11 +163,8 @@ extern "C" {
   
   /*
    * Collect further information wrt the one contained in an eBPF event
-   * @docker_flag: if 1 docker daemon will be queried to gather information
-   *    concerning containers
-   * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
    */
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime);
+  void ebpf_preprocess_event(eBPFevent *event);
 
   const char* ebpf_print_error(ebpfRetCode rc);
 

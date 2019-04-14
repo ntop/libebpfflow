@@ -73,19 +73,6 @@ std::string b64decode(const void* data, const size_t len) {
 /* ******************************************* */
 /* ******************************************* */
 
-static string LoadEBPF(string t_filepath) {
-  ifstream fileinput;
-  stringstream str_stream;
-
-  fileinput.open(t_filepath);
-  str_stream << fileinput.rdbuf();
-  string s = str_stream.str();
-
-  return s;
-}
-
-/* ******************************************* */
-
 static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const char *probe_func) {
   ebpf::StatusTuple rc = bpf->attach_tracepoint(tracepoint, probe_func);
 
@@ -243,59 +230,49 @@ extern "C" {
 
   /* ******************************************* */
 
-  void ebpf_preprocess_event(eBPFevent *event, int docker_flag, char* runtime) {
+  static void fill_exe_path_name(struct taskInfo *task) {
+    if(task->pid != 0) {
+      char what[256], sym[256];
+      int l;
+      
+      snprintf(what, sizeof(what), "/proc/%u/exe", task->pid);
+      if((l = readlink(what, sym, sizeof(sym))) != -1) {
+        sym[l] = '\0';
+        task->full_task_path = strdup(sym);
+      }
+    }
+  }
+  
+  /* ******************************************* */
+
+  void ebpf_preprocess_event(eBPFevent *event) {
     struct container_info *container_info;
-    struct dockerInfo *dinfo;
-    struct kubeInfo *kinfo;
-    int id_get_res, l;
-    char what[256], sym[256] = { '\0' };
-    char fwhat[256], fsym[256] = { '\0' };
 
     gettimeofday(&event->event_time, NULL);
     check_pid(&event->proc), check_pid(&event->father);
 
     event->proc.full_task_path = NULL;
-    if(event->proc.pid != 0) {
-      snprintf(what, sizeof(what), "/proc/%u/exe", event->proc.pid);
-      if((l = readlink(what, sym, sizeof(sym))) != -1) {
-        sym[l] = '\0';
-        event->proc.full_task_path = strdup(sym);
-      }
-    }
 
-    event->father.full_task_path = NULL;
-    if(event->father.pid != 0) {
-      snprintf(what, sizeof(what), "/proc/%u/exe", event->father.pid);
-      if((l = readlink(what, sym, sizeof(sym))) != -1) {
-        sym[l] = '\0';
-        event->father.full_task_path = strdup(sym);
-      }
-    }
+    fill_exe_path_name(&event->proc);
+    fill_exe_path_name(&event->father);
 
-    // Attaching docker container info
-    event->runtime = NULL;
-    event->docker = NULL;
-    event->kube = NULL;
-
-    if(docker_flag && container_id_get(event->cgroup_id, &container_info, runtime)==0) {
-      // Runtime info
-      event->runtime = (char*) malloc(15 * sizeof(char));
-      strcpy(event->runtime, container_info->runtime);
-
-      if(container_info->docker_name[0]!='\0') /* Docker info available */ {
-        dinfo = (struct dockerInfo*) malloc(sizeof(struct dockerInfo));
-        strcpy(dinfo->dname, container_info->docker_name);
-        event->docker = dinfo;
-      }
-      if(container_info->kube_pod[0]!='\0') /* Kubernetes info available */ {
-        kinfo = (struct kubeInfo*) malloc(sizeof(struct kubeInfo));
-        strcpy(kinfo->pod, container_info->kube_pod);
-        strcpy(kinfo->ns, container_info->kube_namespace);
-        event->kube = kinfo;
+    if((event->cgroup_id[0] == '\0')
+       || ((event->cgroup_id[0] == '/') && (event->cgroup_id[1] == '\0')))
+      event->cgroup_id[0] = '\0';
+    else {
+      if(container_id_get(event->cgroup_id, &container_info) == 0) {
+	if(container_info->docker_name[0] != '\0') /* Docker info available */ {
+	  event->docker.dname = strdup(container_info->docker_name.c_str());
+	}
+	
+	if(container_info->kube_pod[0] != '\0') /* Kubernetes info available */ {
+	  event->kube.pod = strdup(container_info->kube_pod.c_str());
+	  event->kube.ns  = strdup(container_info->kube_namespace.c_str());
+	}
       }
     }
   }
-
+  
   /* ******************************************* */
 
   void ebpf_free_event(eBPFevent *event) {
@@ -305,15 +282,9 @@ extern "C" {
     if(event->father.full_task_path != NULL)
       free(event->father.full_task_path);
 
-    if(event->runtime != NULL) {
-      free(event->runtime);
-    }
-
-    if(event->docker != NULL)
-      free(event->docker);
-
-    if(event->kube != NULL)
-      free(event->kube);
+    if(event->docker.dname != NULL) free(event->docker.dname);
+    if(event->kube.pod != NULL)     free(event->kube.pod);
+    if(event->kube.ns != NULL)      free(event->kube.ns);
   }
 
   /* ******************************************* */

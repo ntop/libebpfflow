@@ -34,17 +34,7 @@
 #define REFRESH_TIME 30
 
 struct container_info {
-  // The next fields will be empty if no info is available
-  char docker_name[100];
-  char kube_pod[60];
-  char kube_namespace[60];
-  // Set only if container info is found, empty otherwise
-  char runtime[15];
-};
-
-struct cache_entry {
-  int accessed;
-  struct container_info *value;
+  std::string docker_name, kube_pod, kube_namespace;
 };
 
 // Used to store libcurl partial results
@@ -53,7 +43,6 @@ struct ResponseBuffer {
   size_t size;
 };
 
- 
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
 /* ************************************************* */
@@ -83,9 +72,6 @@ void update_cache_entry(char* t_cgroupid, struct cache_entry *t_dqr);
 /* ********************************************** */
 
  
-static size_t
-WriteMemoryCallback (void *contents, size_t size, size_t nmemb, void *userp);
-
 /* parse_response - fill a container_info data structure with the information returned by a query to
  *   the docker daemon
  * buff: if NULL a dummy entry will be created (not added to the cache)
@@ -144,8 +130,8 @@ void clean_cache ();
  * @t_cgroupid: docker container ID
  * @t_dqs: will point to the container informations if no error occurs (returns != -1)
  * returns 0 if some info has been found, -1 otherwise
- * @runtime: container runtime, NULL to inspect both 'containerd' and 'docker'
+
  */
-int container_id_get (char* t_cgroupid, container_info **t_dqr, char* runtime);
+int container_id_get (char* t_cgroupid, container_info **t_dqr);
 
 #endif /* __DOCKER_API_HPP__ */
