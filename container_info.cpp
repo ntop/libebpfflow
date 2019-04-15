@@ -372,7 +372,7 @@ void clean_cache() {
 
   for(it = gQueryCache.begin(); it != gQueryCache.end();) {
     struct cache_entry ce = it->second;
-    if(ce.visits > 0) {
+    if(ce.visits == 0) {
       it = gQueryCache.erase(it);
     }
     else { 
