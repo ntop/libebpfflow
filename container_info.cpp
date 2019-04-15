@@ -38,11 +38,13 @@
 #define DOCKERD_SOCK_PATH "/var/run/docker.sock"
 #define MICROK8S_CTR_PATH "/snap/bin/microk8s.ctr"
 
+using namespace std;
+
 // Cache where to store the queries results
-static std::unordered_map<std::string, struct container_info> gQueryCache;
+static unordered_map<string, struct cache_entry> gQueryCache;
 
 // Namespace cache
-static std::set<std::string> namespaces;
+static set<string> namespaces;
 
 static char ctr_path[64];
 
@@ -123,7 +125,7 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
   // Docker name
   if(json_object_object_get_ex(jobj, "Name", &jdockername)) {
     res_found = 1;
-    entry->docker_name = std::string(json_object_get_string(jdockername)+1);
+    entry->docker_name = string(json_object_get_string(jdockername)+1);
   }
 
   // Container labels
@@ -137,13 +139,13 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
     // Etracting kube info
     if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
       res_found = 1;
-      entry->kube_pod = std::string(json_object_get_string(jpodname));
+      entry->kube_pod = string(json_object_get_string(jpodname));
     }
 
     // Etracting kube info
     if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.namespace", &jkubens)) {
       res_found = 1;
-      entry->kube_namespace  = std::string(json_object_get_string(jkubens));
+      entry->kube_namespace  = string(json_object_get_string(jkubens));
     }
   }
 
@@ -168,9 +170,9 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
   CURLcode res;
   char url[101];
   struct ResponseBuffer chunk;
-  std::string cgroupid(t_cgroupid);
+  string cgroupid(t_cgroupid);
   struct stat s;
-  struct container_info ci;
+  struct cache_entry ce;
 
 #ifdef DEBUG
   printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
@@ -204,22 +206,23 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
 #ifdef DEBUG
     printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
 #endif
-    if(parse_response(NULL, 0, &ci) == -1)
+    if(parse_response(NULL, 0, &ce.content) == -1)
       return(-1);
   } else {
-    if(parse_response(chunk.memory, chunk.size, &ci) == -1)
+    if(parse_response(chunk.memory, chunk.size, &ce.content) == -1)
       return(-1);
   }
 
   // Adding entry to table and pointing argument to entry
-  gQueryCache[t_cgroupid] = ci;
+  ce.visits = 0;
+  gQueryCache[t_cgroupid] = ce;
 
   // Cleaning up
   curl_easy_cleanup(curl_handle);
   free(chunk.memory);
   curl_global_cleanup();
 
-  *t_dqr = &(gQueryCache[t_cgroupid]);
+  *t_dqr = &(gQueryCache[t_cgroupid].content);
   
   return(0);
 }
@@ -232,9 +235,10 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
   char res[700];
   char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace
   char buff[120];
-  std::string cgroupid(t_cgroupid);
-  std::set<std::string>::iterator s;
-  struct container_info ci;
+  string cgroupid(t_cgroupid);
+  set<string>::iterator s;
+  struct cache_entry ce;
+  struct container_info ci = ce.content;
 
 #ifdef DEBUG
   printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
@@ -242,7 +246,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
 
   (*t_dqr) = NULL;
   
-  if(!std::regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
+  if(!regex_match(cgroupid, regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
     return -1;
 
   for(s = namespaces.begin(); s != namespaces.end(); ++s) {
@@ -253,7 +257,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
     // otherwise there's a risk of command injection
     // cgroupid has been already sanitized
     /* ***** ***** ****************** ***** ***** */
-    if(!std::regex_match(*s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
+    if(!regex_match(*s, regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
       return -1;
 
     snprintf(comm, sizeof(comm), "%s --namespace=%s  c info %s 2>/dev/null",
@@ -286,8 +290,9 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
       return(-1);
   }
 
-  gQueryCache[t_cgroupid] = ci;
-  *t_dqr = &(gQueryCache[t_cgroupid]);
+  ce.visits = 0;
+  gQueryCache[t_cgroupid] = ce;
+  *t_dqr = &(gQueryCache[t_cgroupid].content);
   
   return(1);
 }
@@ -298,7 +303,7 @@ int update_namespaces() {
   FILE *fp;
   int i = 0;
   char ns[20];
-  char buf[64];
+  char buf[90];
 
 #ifdef DEBUG
   printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
@@ -347,12 +352,13 @@ int update_namespaces() {
  *  1 for dummy keys
  */
 int container_id_find_in_cache(char* t_cgroupid, struct container_info **t_dqs) {
-  std::string cgroupid(t_cgroupid);
-  std::unordered_map<std::string, struct container_info>::iterator res = gQueryCache.find(cgroupid);
+  string cgroupid(t_cgroupid);
+  unordered_map<string, struct cache_entry>::iterator res = gQueryCache.find(cgroupid);
 
   if(res != gQueryCache.end()) {
-    *t_dqs = &(res->second);
-    
+    *t_dqs = &(res->second.content);
+    res->second.visits++;
+
     return 0;
   } else
     return(-1);
@@ -360,9 +366,23 @@ int container_id_find_in_cache(char* t_cgroupid, struct container_info **t_dqs) 
 
 /* **************************************************** */
 
-/* ******************************* */
-// ===== ===== QUERIES ===== ===== //
-/* ******************************* */
+void clean_cache() {
+  time_t now = time(0);
+  unordered_map<string, struct cache_entry>::iterator it;
+
+  for(it = gQueryCache.begin(); it != gQueryCache.end();) {
+    struct cache_entry ce = it->second;
+    if(ce.visits < MIN_VISITS) {
+      it = gQueryCache.erase(it);
+    }
+    else { 
+      ce.visits = 0;
+      it++;
+    }
+  } 
+}
+
+/* **************************************************** */
 
 int container_id_get(char* t_cgroupid, struct container_info **t_dqr) {
   int res;
@@ -378,7 +398,7 @@ int container_id_get(char* t_cgroupid, struct container_info **t_dqr) {
   
   if(difftime(now, last) > REFRESH_TIME /* Seconds */ ) {
     int rc;
-
+    clean_cache();
     namespaces.clear();
     rc = update_namespaces();
     last = now;

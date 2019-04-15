@@ -26,15 +26,19 @@
 #include <stdlib.h>
 #include <unordered_map>
 
-
-// Every time the cache is cleaned, every entry
-// with less than MINTOCLEAN accesses will be removed
-#define MINTOCLEAN 50
+// Cache entries not accessed in the last ENTRY_TIMEOUT seconds
+// will be invalidated every cache cleaning cycle
+#define MIN_VISITS 120
 // Cache cleaning and namespace update interval in seconds
 #define REFRESH_TIME 30
 
 struct container_info {
   std::string docker_name, kube_pod, kube_namespace;
+};
+
+struct cache_entry {
+  int visits;
+  struct container_info content;
 };
 
 // Used to store libcurl partial results
@@ -62,6 +66,11 @@ void container_api_clean ();
  */
 int update_namespaces();
 
+/* 
+ * Removes from the cache all those entries that have been accessed less than MIN_VISITS times
+ */
+void clean_cache();
+
 /*
  * Create the entry if it does not exist, otherwise updates the content
  */
@@ -70,7 +79,6 @@ void update_cache_entry(char* t_cgroupid, struct cache_entry *t_dqr);
 /* ********************************************** */
 // ===== ===== QUERY TO DOCKER DAEMON ===== ===== //
 /* ********************************************** */
-
  
 /* parse_response - fill a container_info data structure with the information returned by a query to
  *   the docker daemon
