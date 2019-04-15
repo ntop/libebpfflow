@@ -58,7 +58,7 @@ Note: please run as root
 ```
 What follows is a demostration of the execution of *toolebpflow* in a system where both minikube with containerd as runtime and docker containers are running at the same time.
 ```sh
-sudo ./toolebpflow -tio
+$ sudo ./toolebpflow -tio
 Welcome to toolebpflow v.1.0.190407
 (C) 2018-19 ntop.org
 Initializing eBPF [Legacy API]...
@@ -70,9 +70,25 @@ eBPF initializated successfully
 ```
 A basic example of usage in c++ can be found in the directory */examples* whereas for the Go language the example provided is the one in */go/ebpf_flow.go*. More details on how to use the library you can be found in the [ntopng](https://github.com/ntop/ntopng) code or by inspecting the code of the tool toolebpflow application.
 
+### Start as a Docker container
+To use toolebpflow as a Docker container first you have to build the tool. Once the tool has been built, build the docker image from the project root:
+```sh
+$ docker build -t toolebpflow .
+```
+The container can then be run
+```sh
+$ docker run -it --rm --privileged \ 
+  -v /lib/modules:/lib/modules:ro \
+  -v /usr/src:/usr/src:ro \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /sys/kernel/debug:/sys/kernel/debug \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /snap/bin/microk8s.ctr:/snap/bin/microk8s.ctr \ 
+  toolebpflow
+```
+
 ### Open Issues
 While the library is already usable in production, we plan to add some additional features including:
-* Add POD/K8 visibility
 * Implement periodic flow stats exports including bytes/packets/retransmissions
 * Add flow termination export
 
