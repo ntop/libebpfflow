@@ -41,15 +41,15 @@ import (
 
 void go_handleEvent(void *t_bpfctx, void *t_data, int t_datalen);
 
-static void* wrapper_init_ebpf_flow (__u16 flags) {
+static void* wrapper_init_ebpf_flow(__u16 flags) {
   ebpfRetCode rc;
   return init_ebpf_flow(NULL, go_handleEvent, &rc, flags);
 }
 
-static eBPFevent* preprocess (eBPFevent *e) {  
+static eBPFevent* preprocess(eBPFevent *e) {  
   eBPFevent *event = malloc(sizeof(eBPFevent));
   memcpy(event, e, sizeof(eBPFevent));
-  ebpf_preprocess_event(event, 1, NULL);
+  ebpf_preprocess_event(event);
   return event;
 }
 */
@@ -137,7 +137,6 @@ type EBPFevent struct {
 
   Cgroup_id string // Container identifier
   // Both next fields are initializated to nil and populated only during preprocessing
-  Runtime string
   Docker *DockerInfo
   Kube *KubeInfo
 }
@@ -222,7 +221,7 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
     Father: c2TaskInfo(filled_event.father),
     Cgroup_id: C.GoString(&filled_event.cgroup_id[0]),
   }
-  if (filled_event.ip_version == 4) {
+  if(filled_event.ip_version == 4) {
     ipv4 := (*C.struct_ipv4_kernel_data)(unsafe.Pointer(&filled_event.event[0]))
     goevent.Saddr = make(net.IP, 4)
     binary.LittleEndian.PutUint32(goevent.Saddr, (uint32)(ipv4.saddr))
@@ -235,19 +234,22 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
     daddr := ([16]byte)(ipv6.daddr)
     goevent.Daddr = net.ParseIP(string(daddr[:]))
   }
-  if (filled_event.runtime != nil) {
-    goevent.Runtime = C.GoString(filled_event.runtime)
-    if (filled_event.docker != nil) {
-      goevent.Docker = &DockerInfo {
-        Dname: C.GoString(&filled_event.docker.dname[0]),
-      }
+
+  if(filled_event.docker.dname != nil) {
+    goevent.Docker = &DockerInfo {
+      Dname: C.GoString(filled_event.docker.dname),
     }
-    if (filled_event.kube != nil) {
-      goevent.Kube = &KubeInfo {
-        Pod: C.GoString(&filled_event.kube.pod[0]),
-        Ns: C.GoString(&filled_event.kube.ns[0]),
-      }
+  } else {
+    goevent.Docker = nil
+  }
+
+  if(filled_event.kube.pod != nil) {
+    goevent.Kube = &KubeInfo {
+      Pod: C.GoString(filled_event.kube.pod),
+      Ns: C.GoString(filled_event.kube.ns),
     }
+  } else {
+    goevent.Kube = nil
   }
 
   gHandler(goevent)
