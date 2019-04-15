@@ -26,9 +26,6 @@
 #include <stdlib.h>
 #include <unordered_map>
 
-// Cache entries not accessed in the last ENTRY_TIMEOUT seconds
-// will be invalidated every cache cleaning cycle
-#define MIN_VISITS 120
 // Cache cleaning and namespace update interval in seconds
 #define REFRESH_TIME 30
 
