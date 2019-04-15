@@ -34,7 +34,7 @@ struct container_info {
 };
 
 struct cache_entry {
-  int visits;
+  int num_uses;
   struct container_info content;
 };
 

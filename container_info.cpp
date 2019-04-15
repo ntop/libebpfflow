@@ -84,7 +84,7 @@ static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, vo
 #ifdef DEBUG
     printf("not enough memory (realloc returned NULL)\n");
 #endif
-    return 0;
+    return(0);
   }
 
   mem->memory = ptr;
@@ -99,7 +99,7 @@ static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, vo
 
 /* parse_response - fill a container_info data structure with the information returned by a query to
  * the docker daemon
- * return 0 if no error occurred -1 otherwise
+ * return(0) if no error occurred -1 otherwise
  */
 int parse_response(char* buff, int buffsize, struct container_info *entry) {
   int res_found = 0; // 1 if some info has been found
@@ -120,7 +120,7 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
   json_tokener_free(jtok);
 
   if(jobj == NULL)
-    goto fail; 
+    goto fail;
 
   // Docker name
   if(json_object_object_get_ex(jobj, "Name", &jdockername)) {
@@ -153,7 +153,7 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
     goto fail;
 
   json_object_put(jobj);
-  return 0;
+  return(0);
 
  fail:
   if(jobj)
@@ -179,7 +179,7 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
 #endif
 
   (*t_dqr) = NULL;
-  
+
   if(stat(DOCKERD_SOCK_PATH, &s) == -1)
     return(-1); /* Docker not found */
 
@@ -214,7 +214,7 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
   }
 
   // Adding entry to table and pointing argument to entry
-  ce.visits = 0;
+  ce.num_uses = 0;
   gQueryCache[t_cgroupid] = ce;
 
   // Cleaning up
@@ -223,7 +223,7 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
   curl_global_cleanup();
 
   *t_dqr = &(gQueryCache[t_cgroupid].content);
-  
+
   return(0);
 }
 
@@ -245,7 +245,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
 #endif
 
   (*t_dqr) = NULL;
-  
+
   if(!regex_match(cgroupid, regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
     return -1;
 
@@ -279,7 +279,7 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
       if(fgets(buff, sizeof(buff)-1, fp) == NULL) break;
       strncat(res, buff, sizeof(res)-strlen(res)-1);
     }
-    
+
     // only kubernetes info are extracted, we need to repair the json
     strncat(res, "}}", sizeof(res)-strlen(res)-1);
 
@@ -290,10 +290,10 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
       return(-1);
   }
 
-  ce.visits = 0;
+  ce.num_uses = 0;
   gQueryCache[t_cgroupid] = ce;
   *t_dqr = &(gQueryCache[t_cgroupid].content);
-  
+
   return(1);
 }
 
@@ -308,7 +308,7 @@ int update_namespaces() {
 #ifdef DEBUG
   printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
 #endif
-  
+
   namespaces.clear();
 
   snprintf(buf, sizeof(buf), "%s namespace ls 2>/dev/null", ctr_path);
@@ -357,9 +357,9 @@ int container_id_find_in_cache(char* t_cgroupid, struct container_info **t_dqs) 
 
   if(res != gQueryCache.end()) {
     *t_dqs = &(res->second.content);
-    res->second.visits++;
+    res->second.num_uses++;
 
-    return 0;
+    return(0);
   } else
     return(-1);
 }
@@ -367,19 +367,18 @@ int container_id_find_in_cache(char* t_cgroupid, struct container_info **t_dqs) 
 /* **************************************************** */
 
 void clean_cache() {
-  time_t now = time(0);
   unordered_map<string, struct cache_entry>::iterator it;
 
   for(it = gQueryCache.begin(); it != gQueryCache.end();) {
     struct cache_entry ce = it->second;
-    if(ce.visits == 0) {
+
+    if(ce.num_uses == 0)
       it = gQueryCache.erase(it);
-    }
-    else { 
-      ce.visits = 0;
+    else {
+      ce.num_uses = 0;
       it++;
     }
-  } 
+  }
 }
 
 /* **************************************************** */
@@ -395,7 +394,7 @@ int container_id_get(char* t_cgroupid, struct container_info **t_dqr) {
 
   if((t_cgroupid[0] == '\0') || (strcmp(t_cgroupid, "/") == 0))
     return(-1);
-  
+
   if(difftime(now, last) > REFRESH_TIME /* Seconds */ ) {
     int rc;
     clean_cache();
@@ -408,7 +407,7 @@ int container_id_get(char* t_cgroupid, struct container_info **t_dqr) {
 
   res = container_id_find_in_cache(t_cgroupid, t_dqr);
   if(res != -1) /* Item is cached */
-    return(res);  
+    return(res);
 
   // Dockerd
   res = dockerd_update_query_cache(t_cgroupid, t_dqr);
