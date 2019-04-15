@@ -1,12 +1,11 @@
 package main
 
 import (
-    ebpf_flow "./go"
-    "os"
-    "syscall"
-    "os/signal"
-    "fmt"
-    "strings"
+  ebpf_flow "./go"
+  "os"
+  "syscall"
+  "os/signal"
+  "fmt"
 )
 
 var gRUNNING bool = true
@@ -39,8 +38,9 @@ func event_handler (event ebpf_flow.EBPFevent) {
     event.Proc.Task, event.Proc.Full_Task_Path)
   fmt.Printf("[%s:%d <-> %s:%d]",
     event.Saddr.String(), event.Sport, event.Daddr.String(), event.Dport)
-  if strings.Compare(event.Runtime, "")!=0 {
-    fmt.Printf("[container_runtime: %s][container_id: %s]", event.Runtime, event.Cgroup_id[:16])
+  
+  if(event.Docker != nil) {
+    fmt.Printf("[container_id: %s][name: %s]", event.Cgroup_id[:16], event.Docker.Dname)
   }
   fmt.Printf("\n")
 }
