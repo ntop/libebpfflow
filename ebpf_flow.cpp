@@ -292,8 +292,9 @@ extern "C" {
   void term_ebpf_flow(void *ebpfHook) {
     ebpf::BPF *bpf = (ebpf::BPF*)ebpfHook;
     container_api_clean();
-
-    delete bpf;
+    
+    if(bpf != NULL)
+      delete bpf;
   }
 
   /* ******************************************* */
