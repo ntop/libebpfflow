@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
     case 'z':
       zmq_port = atoi(optarg);
       if(zmq_port == 0) {
-        printf("ZMQ wrong port number: %s \n", optarg);
+        printf("Invalid port number: %s \n", optarg);
         help();
         return -1;
       }
@@ -370,7 +370,7 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
 /* ******************************************* */
 
-int task2json(struct taskInfo *t, struct json_object **t_res) {
+void task2json(struct taskInfo *t, struct json_object **t_res) {
   struct json_object *j = json_object_new_object();
  
   json_object_object_add(j, "pid", json_object_new_int(t->pid));
@@ -381,12 +381,11 @@ int task2json(struct taskInfo *t, struct json_object **t_res) {
     json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
 
   *t_res = j;
-  return(0);
 }
 
 /* ******************************************* */
 
-int event2json(eBPFevent *t_event, struct json_object **t_res) {
+void event2json(eBPFevent *t_event, struct json_object **t_res) {
   char buf1[128], buf2[128];
   char *saddr, *daddr;
   struct json_object *j = json_object_new_object(), 
@@ -414,7 +413,7 @@ int event2json(eBPFevent *t_event, struct json_object **t_res) {
  
   json_object_object_add(j, "proto", json_object_new_int(t_event->proto));
   json_object_object_add(j, "sport", json_object_new_int(t_event->sport));
-  json_object_object_add(j, "pport", json_object_new_int(t_event->dport));
+  json_object_object_add(j, "dport", json_object_new_int(t_event->dport));
   json_object_object_add(j, "latency_usec", json_object_new_int(t_event->latency_usec));
   json_object_object_add(j, "retransmissions", json_object_new_int(t_event->retransmissions));
 
@@ -438,7 +437,6 @@ int event2json(eBPFevent *t_event, struct json_object **t_res) {
   }
   
   *t_res = j;
-  return(0);
 }
 
 /* ******************************************* */
@@ -448,12 +446,10 @@ static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   char *json_str;
   eBPFevent *e = (eBPFevent*)t_data;
   eBPFevent event;
-  struct timespec tp;
   
   memcpy(&event, e, sizeof(eBPFevent));
   ebpf_preprocess_event(&event);
-  if(event2json(&event, &json_event) != 0)
-    return;
+  event2json(&event, &json_event);
   json_str = (char*) json_object_get_string(json_event);
 
   // writing event ----- //
@@ -465,6 +461,7 @@ static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   zmq_send(gZMQsocket, json_str, msg_hdr.size, 0);
 
   json_object_put(json_event);
+  ebpf_free_event(&event);
 }  
 
 /* ******************************************* */

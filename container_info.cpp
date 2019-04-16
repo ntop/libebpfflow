@@ -166,6 +166,7 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
 /* **************************************************** */
 
 int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) {
+  int rc = 0;
   CURL *curl_handle;
   CURLcode res;
   char url[101];
@@ -206,25 +207,30 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
 #ifdef DEBUG
     printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
 #endif
-    if(parse_response(NULL, 0, &ce.content) == -1)
-      return(-1);
+    if(parse_response(NULL, 0, &ce.content) == -1) {
+      rc = -1;
+      goto clean;
+    }
   } else {
-    if(parse_response(chunk.memory, chunk.size, &ce.content) == -1)
-      return(-1);
+    if(parse_response(chunk.memory, chunk.size, &ce.content) == -1) {
+      rc = -1;
+      goto clean;
+    }
   }
 
   // Adding entry to table and pointing argument to entry
   ce.num_uses = 0;
   gQueryCache[t_cgroupid] = ce;
 
+  *t_dqr = &(gQueryCache[t_cgroupid].content);
+
+clean:
   // Cleaning up
   curl_easy_cleanup(curl_handle);
   free(chunk.memory);
   curl_global_cleanup();
 
-  *t_dqr = &(gQueryCache[t_cgroupid].content);
-
-  return(0);
+  return(rc);
 }
 
 /* **************************************************** */
