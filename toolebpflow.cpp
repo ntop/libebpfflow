@@ -162,7 +162,6 @@ void help() {
 	 "   -o, --on        outgoing events (i.e. TCP connect and UDP send) \n"
 	 "   -r, --retr      retransmissions events \n"
 	 "   -c, --tcpclose  TCP close events \n"
-	 "   -d, --docker    gather additional information concerning containers  (default: enabled)\n"
 	 "   -v, --verbose   vebose formatting"
 	 "Note: please run as root \n"
 	 );
