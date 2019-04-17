@@ -21,7 +21,7 @@ endif
 ###############################################################
 
 CFLAGS=-g -Wall $(JSON_INC) $(LIBCURL_INC)
-LIBS=-lbcc $(JSON_LIB) $(LIBCURL_LIB)
+LIBS=-lbcc -lzmq $(JSON_LIB) $(LIBCURL_LIB)
 GOROOT=
 
 all: toolebpflow

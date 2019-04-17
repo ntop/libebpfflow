@@ -48,7 +48,7 @@ static set<string> namespaces;
 
 static char ctr_path[64];
 
-/* #define DEBUG */
+// #define DEBUG
 
 /* ************************************************* */
 // ===== ===== INITIALIZER AND DESTROYER ===== ===== //
@@ -111,7 +111,7 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
   printf("[%s:%u] %s(%s)\n", __FILE__, __LINE__, __FUNCTION__, buff);
 #endif
 
-  memset(entry, 0, sizeof(struct container_info));
+  //memset(entry, 0, sizeof(struct container_info));
 
   // Parsing req to json
   jtok = json_tokener_new();
@@ -159,13 +159,14 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
   if(jobj)
     json_object_put(jobj);
 
-  memset(entry, 0, sizeof(struct container_info));
+  // memset(entry, 0, sizeof(struct container_info));
   return(-1);
 }
 
 /* **************************************************** */
 
 int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) {
+  int rc = 0;
   CURL *curl_handle;
   CURLcode res;
   char url[101];
@@ -202,29 +203,26 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
   res = curl_easy_perform(curl_handle);
 
   // Checking for errors
-  if(res != CURLE_OK) /* Create dummy entry */ {
+  if(res == CURLE_OK) {
+    rc = parse_response(chunk.memory, chunk.size, &ce.content);
+  } else {
 #ifdef DEBUG
     printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
 #endif
-    if(parse_response(NULL, 0, &ce.content) == -1)
-      return(-1);
-  } else {
-    if(parse_response(chunk.memory, chunk.size, &ce.content) == -1)
-      return(-1);
   }
 
   // Adding entry to table and pointing argument to entry
   ce.num_uses = 0;
   gQueryCache[t_cgroupid] = ce;
 
+  *t_dqr = &(gQueryCache[t_cgroupid].content);
+
   // Cleaning up
   curl_easy_cleanup(curl_handle);
   free(chunk.memory);
   curl_global_cleanup();
 
-  *t_dqr = &(gQueryCache[t_cgroupid].content);
-
-  return(0);
+  return(rc);
 }
 
 /* **************************************************** */
@@ -238,7 +236,6 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
   string cgroupid(t_cgroupid);
   set<string>::iterator s;
   struct cache_entry ce;
-  struct container_info ci = ce.content;
 
 #ifdef DEBUG
   printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
@@ -286,15 +283,15 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
     pclose(fp);
 
     // handling json
-    if(parse_response(res, sizeof(res), &ci) == -1)
-      return(-1);
+    if(parse_response(res, sizeof(res), &ce.content) == 0)
+      break;
   }
 
   ce.num_uses = 0;
   gQueryCache[t_cgroupid] = ce;
   *t_dqr = &(gQueryCache[t_cgroupid].content);
 
-  return(1);
+  return(0);
 }
 
 /* **************************************************** */
@@ -331,7 +328,7 @@ int update_namespaces() {
       space[0] = '\0';
 
 #ifdef DEBUG
-    printf("[%s:%u] Found namespeace %s\n", __FILE__, __LINE__, space);
+    printf("[%s:%u] Found namespace %s\n", __FILE__, __LINE__, space);
 #endif
 
     namespaces.insert(ns);
