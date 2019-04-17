@@ -431,8 +431,10 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   }
   if(t_event->kube.pod) { 
     kube_json = json_object_new_object();
-    json_object_object_add(kube_json, "pod", json_object_new_int(t_event->retransmissions));
-    json_object_object_add(kube_json, "ns", json_object_new_int(t_event->retransmissions));
+    if(t_event->kube.pod != NULL)
+      json_object_object_add(kube_json, "pod", json_object_new_string(t_event->kube.pod));
+    if(t_event->kube.ns != NULL)
+      json_object_object_add(kube_json, "ns", json_object_new_string(t_event->kube.ns));
     json_object_object_add(j, "kube", kube_json);
   }
   
