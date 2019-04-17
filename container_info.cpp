@@ -203,19 +203,12 @@ int dockerd_update_query_cache(char* t_cgroupid, struct container_info **t_dqr) 
   res = curl_easy_perform(curl_handle);
 
   // Checking for errors
-  if(res != CURLE_OK) /* Create dummy entry */ {
+  if(res == CURLE_OK) {
+    parse_response(chunk.memory, chunk.size, &ce.content);
+  } else {
 #ifdef DEBUG
     printf("curl_easy_perform(%s) failed: %s\n", url, curl_easy_strerror(res));
 #endif
-    if(parse_response(NULL, 0, &ce.content) == -1) {
-      rc = -1;
-      goto clean;
-    }
-  } else {
-    if(parse_response(chunk.memory, chunk.size, &ce.content) == -1) {
-      rc = -1;
-      goto clean;
-    }
   }
 
   // Adding entry to table and pointing argument to entry
