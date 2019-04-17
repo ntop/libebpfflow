@@ -77,7 +77,7 @@ $ docker build -t toolebpflow .
 ```
 The container can then be run
 ```sh
-$ docker run -it --rm --privileged \ 
+$ docker run -it --rm --privileged \
   -v /lib/modules:/lib/modules:ro \
   -v /usr/src:/usr/src:ro \
   -v /etc/localtime:/etc/localtime:ro \
