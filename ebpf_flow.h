@@ -48,17 +48,16 @@ typedef enum {
 
 /*
  * Supported flags to filter events when initializating libebpfflow
- * Combinations of this flags allow to capture only subsets of events
+ * Combinations of this flags allow selecte events to be to captured
  */
 typedef enum {
-  LIBEBPF_TCP = 1 << 0,
-  LIBEBPF_UDP = 1 << 1,
-  LIBEBPF_INCOMING = 1 << 2,
+  LIBEBPF_TCP       = 1 << 0,
+  LIBEBPF_UDP       = 1 << 1,
+  LIBEBPF_INCOMING  = 1 << 2,
   LIBEBPF_OUTCOMING = 1 << 3,
   LIBEBPF_TCP_CLOSE = 1 << 4,
-  LIBEBPF_TCP_RETR = 1 << 5,
+  LIBEBPF_TCP_RETR  = 1 << 5,
 } libebpflow_flag;
-
 
 /* ******************************************* */
 
@@ -67,7 +66,7 @@ extern "C" {
 #endif // __cplusplus
 
   typedef void (*eBPFHandler)(void* t_bpfctx, void* t_data, int t_datasize);
- 
+
   /*
    * init_ebpf_flow - Initializes the library with a target event handler
    * @ebpfHandler: the function used to handle events
@@ -77,15 +76,16 @@ extern "C" {
    *    all events. Supported events are combinations of libebpflow_flag enum type
    * returns a pointer to an ebpf::BPF object upon success NULL otherwise
    */
-  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler, 
-		       ebpfRetCode *rc, u_int16_t flags /* default 0 to capture all events */);
+  void* init_ebpf_flow(void *priv_ptr, eBPFHandler ebpfHandler,
+		       ebpfRetCode *rc,
+		       u_int16_t flags /* default 0 to capture all events */);
 
   /*
    * term_ebpf_flow - Cleans the resources used by the library
-   * @ebpfHook: a pointer to an ebpf::BPF, that is the one returned by init_ebpf_flow 
-   */  
+   * @ebpfHook: a pointer to an ebpf::BPF, that is the one returned by init_ebpf_flow
+   */
   void term_ebpf_flow(void *ebpfHook);
-  
+
   /*
    * ebpf_poll_event: Pools an event from an ebpf::BPF object
    * @ms_timeout: maximum time to wait for an event
@@ -93,7 +93,7 @@ extern "C" {
    * return 1 if an event has been processed, 0 in case of timeout.
    */
   int ebpf_poll_event(void *ebpfHook, u_int ms_timeout);
-  
+
   /*
    * Collect further information wrt the one contained in an eBPF event
    */
@@ -105,8 +105,17 @@ extern "C" {
   * Cleans the resources used by an eBPFevent data structure
   */
   void ebpf_free_event(eBPFevent *event);
+
+
+  /* ******************************************* */
+  /*
+   * Returns the handler used by this library to retrieve container information
+   * to be casted to ContainerInfo* to avoid mixinc C with C++
+   */
+  void* ebpf_get_cinfo_handler();
+
   const char* ebpf_flow_version();
-  
+
 #ifdef __cplusplus
 };
 #endif // __cplusplus

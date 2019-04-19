@@ -33,25 +33,31 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-using namespace std;
-
 #include "ebpflow.ebpf.enc"
+
+static ContainerInfo cinfo;
+
+/* ******************************************* */
 
 std::string b64decode(const void* data, const size_t len) {
   unsigned char* p = (unsigned char*)data;
   int pad = len > 0 && (len % 4 || p[len - 1] == '=');
   const size_t L = ((len + 3) / 4 - pad) * 4;
   std::string str(L / 4 * 3 + pad, '\0');
-  const int B64index[256] = { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-			      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-			      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 62, 63, 62, 62, 63, 52, 53, 54, 55,
-			      56, 57, 58, 59, 60, 61,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
-			      7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,
-			      0,  0,  0, 63,  0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-			      41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 };
+  const int B64index[256] = {
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 62, 63, 62, 62, 63, 52, 53, 54, 55,
+    56, 57, 58, 59, 60, 61,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4,  5,  6,
+    7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,
+    0,  0,  0, 63,  0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51 };
 
   for(size_t i = 0, j = 0; i < L; i += 4) {
-    int n = B64index[p[i]] << 18 | B64index[p[i + 1]] << 12 | B64index[p[i + 2]] << 6 | B64index[p[i + 3]];
+    int n = B64index[p[i]] << 18 |
+      B64index[p[i + 1]] << 12 |
+      B64index[p[i + 2]] << 6 |
+      B64index[p[i + 3]];
     str[j++] = n >> 16;
     str[j++] = n >> 8 & 0xFF;
     str[j++] = n & 0xFF;
@@ -73,7 +79,8 @@ std::string b64decode(const void* data, const size_t len) {
 /* ******************************************* */
 /* ******************************************* */
 
-static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const char *probe_func) {
+static int attachEBPFTracepoint(ebpf::BPF *bpf,
+				const char *tracepoint, const char *probe_func) {
   ebpf::StatusTuple rc = bpf->attach_tracepoint(tracepoint, probe_func);
 
 #ifdef DEBUG
@@ -87,7 +94,8 @@ static int attachEBPFTracepoint(ebpf::BPF *bpf, const char *tracepoint, const ch
 /* ******************************************* */
 
 static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
-				 const char *entry_point, bpf_probe_attach_type attach_type) {
+				 const char *entry_point,
+				 bpf_probe_attach_type attach_type) {
   int rc = bpf->attach_kprobe(queue_name, entry_point,
 #ifdef HAVE_NEW_EBPF
 			      0,
@@ -113,8 +121,6 @@ extern "C" {
 
     // Default value is 0
     flags = (flags == 0) ? 0xFFFF : flags;
-
-    container_api_init();
 
     if(code == "") {
       *rc = ebpf_unable_to_load_kernel_probe;
@@ -198,7 +204,6 @@ extern "C" {
 
   init_failed:
     if(bpf) delete bpf;
-    container_api_clean();
     return(NULL);
   };
 
@@ -234,7 +239,7 @@ extern "C" {
     if(task->pid != 0) {
       char what[256], sym[256];
       int l;
-      
+
       snprintf(what, sizeof(what), "/proc/%u/exe", task->pid);
       if((l = readlink(what, sym, sizeof(sym))) != -1) {
         sym[l] = '\0';
@@ -242,7 +247,7 @@ extern "C" {
       }
     }
   }
-  
+
   /* ******************************************* */
 
   void ebpf_preprocess_event(eBPFevent *event) {
@@ -256,16 +261,16 @@ extern "C" {
     fill_exe_path_name(&event->proc);
     fill_exe_path_name(&event->father);
 
-    if((event->cgroup_id[0] == '\0')
-       || ((event->cgroup_id[0] == '/') && (event->cgroup_id[1] == '\0')))
-      event->cgroup_id[0] = '\0';
+    if((event->container_id[0] == '\0')
+       || ((event->container_id[0] == '/') && (event->container_id[1] == '\0')))
+      event->container_id[0] = '\0';
     else {
       event->docker.name = event->kube.name = event->kube.pod = event->kube.ns = NULL;
-      
-      if(container_id_get(event->cgroup_id, &container_info) == 0) {
+
+      if(cinfo.get_container_info(event->container_id, &container_info) == 0) {
 	if(container_info->docker.name[0] != '\0') /* Docker info available */
-	  event->docker.name = strdup(container_info->docker.name.c_str());	
-	  
+	  event->docker.name = strdup(container_info->docker.name.c_str());
+
 	if(container_info->kube.name[0] != '\0') /* Kubernetes info available */ {
 	  event->kube.name = strdup(container_info->kube.name.c_str());
 	  event->kube.pod  = strdup(container_info->kube.pod.c_str());
@@ -274,7 +279,7 @@ extern "C" {
       }
     }
   }
-  
+
   /* ******************************************* */
 
   void ebpf_free_event(eBPFevent *event) {
@@ -294,8 +299,7 @@ extern "C" {
 
   void term_ebpf_flow(void *ebpfHook) {
     ebpf::BPF *bpf = (ebpf::BPF*)ebpfHook;
-    container_api_clean();
-    
+
     if(bpf != NULL)
       delete bpf;
   }
@@ -339,7 +343,12 @@ extern "C" {
 
   /* ******************************************* */
 
+  void* ebpf_get_cinfo_handler() { return((void*)&cinfo); }
+
+  /* ******************************************* */
+
   const char* ebpf_flow_version() {
     return(EBPF_FLOW_VERSION);
   }
+
 };

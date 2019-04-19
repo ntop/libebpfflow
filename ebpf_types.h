@@ -18,7 +18,7 @@
  *
  */
 
-#define CGROUP_ID_LEN 65 // max is in limits.h -> NAME_MAX
+#define CONTAINER_ID_LEN 65 // max is in limits.h -> NAME_MAX
 
 #define COMMAND_LEN 16 // defined in sched.h
 
@@ -79,7 +79,7 @@ typedef struct {
   u16 retransmissions;
 
   struct taskInfo proc, father;
-  char cgroup_id[CGROUP_ID_LEN];
+  char container_id[CONTAINER_ID_LEN];
 
   struct {
     char *name;

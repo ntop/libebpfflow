@@ -20,7 +20,7 @@
 
 struct udp_info {
   struct taskInfo proc, father;
-  char cgroup_id[CGROUP_ID_LEN];
+  char container_id[CONTAINER_ID_LEN];
 };
 BPF_HASH(udpinfo, u16, struct udp_info);
 
@@ -73,7 +73,7 @@ static void fill_father_task_info(struct taskInfo *task) {
 
 /* ******************************************* */
 
-static void fill_cgroup_id(char *cgroup_id) {
+static void fill_container_id(char *container_id) {
   struct task_struct *curr_task;
   struct cgroup *cg;
   struct css_set *css;
@@ -81,7 +81,7 @@ static void fill_cgroup_id(char *cgroup_id) {
   struct kernfs_node *knode, *pknode;
 
   // Initializing to root cgroup
-  memcpy(cgroup_id, "/\0", 2);
+  memcpy(container_id, "/\0", 2);
 
   curr_task = (struct task_struct *) bpf_get_current_task();
   css = curr_task->cgroups;
@@ -96,13 +96,13 @@ static void fill_cgroup_id(char *cgroup_id) {
     char *aus;
 
     bpf_probe_read(&aus, sizeof(void *), &knode->name);
-    bpf_probe_read_str(cgroup_id, CGROUP_ID_LEN, aus);
+    bpf_probe_read_str(container_id, CONTAINER_ID_LEN, aus);
   }
 }
 
 /* ******************************************* */
 
-static void fill_task_info(char *cgroup_id, struct taskInfo *task, struct taskInfo *father) {
+static void fill_task_info(char *container_id, struct taskInfo *task, struct taskInfo *father) {
   struct task_struct *curr_task = (struct task_struct *)bpf_get_current_task();
   u64 tgid = bpf_get_current_pid_tgid();
   u64 ugid = bpf_get_current_uid_gid();
@@ -121,8 +121,8 @@ static void fill_task_info(char *cgroup_id, struct taskInfo *task, struct taskIn
     fill_father_task_info(father);
   }
 
-  cgroup_id[0] = '\0';
-  fill_cgroup_id(cgroup_id);
+  container_id[0] = '\0';
+  fill_container_id(container_id);
 }
 
 /* ******************************************* */
@@ -240,7 +240,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
   bpf_get_current_comm(&ev->proc.task, sizeof(ev->proc.task));
   ev->proc.pid = pid;
 
-  fill_task_info((char*)ev->cgroup_id, &ev->proc, &ev->father);
+  fill_task_info((char*)ev->container_id, &ev->proc, &ev->father);
 
   if(swap_peers) swap_event_peers(ev);
 
@@ -502,9 +502,9 @@ static inline int udp_packet_trace(void *ctx, struct sk_buff* skb, u_int8_t sent
   event.latency_usec = 0;
 
   if(sent_packet)
-    fill_task_info((char*)event.cgroup_id, &event.proc, &event.father);
+    fill_task_info((char*)event.container_id, &event.proc, &event.father);
   else {
-    event.cgroup_id[0] = '\0';
+    event.container_id[0] = '\0';
     memset(&event.proc, 0, sizeof(event.proc));
     memset(&event.father, 0, sizeof(event.father));
   }

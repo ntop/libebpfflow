@@ -43,8 +43,6 @@
 #include "ebpf_flow.h"
 
 
-using namespace std;
-
 void help();
 static char* intoaV4(unsigned int addr, char* buf, u_short bufLen);
 char* intoaV6(unsigned __int128 addr, char* buf, u_short bufLen);
@@ -354,8 +352,8 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   }
   
  // Container ----- /'/
-  if(event.cgroup_id[0] != '\0') {
-    printf("[containerID: %s]", event.cgroup_id);
+  if(event.container_id[0] != '\0') {
+    printf("[containerID: %s]", event.container_id);
     
     if(event.docker.name != NULL)
       printf("[docker_name: %s]", event.docker.name);
@@ -423,8 +421,8 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   task2json(&t_event->father, &father);
   json_object_object_add(j, "father", father);
 
-  if(t_event->cgroup_id[0] != '\0')
-    json_object_object_add(j, "cgroup_id", json_object_new_string(t_event->cgroup_id));
+  if(t_event->container_id[0] != '\0')
+    json_object_object_add(j, "container_id", json_object_new_string(t_event->container_id));
 
   if(t_event->docker.name != NULL) {
     docker_json = json_object_new_object();
