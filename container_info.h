@@ -30,7 +30,13 @@
 #define REFRESH_TIME 30
 
 struct container_info {
-  std::string docker_name, kube_pod, kube_namespace;
+  struct {
+    std::string name;
+  } docker;
+
+  struct {
+    std::string pod, name, ns;
+  } kube;
 };
 
 struct cache_entry {

@@ -260,14 +260,16 @@ extern "C" {
        || ((event->cgroup_id[0] == '/') && (event->cgroup_id[1] == '\0')))
       event->cgroup_id[0] = '\0';
     else {
+      event->docker.name = event->kube.name = event->kube.pod = event->kube.ns = NULL;
+      
       if(container_id_get(event->cgroup_id, &container_info) == 0) {
-	if(container_info->docker_name[0] != '\0') /* Docker info available */ {
-	  event->docker.dname = strdup(container_info->docker_name.c_str());
-	}
-	
-	if(container_info->kube_pod[0] != '\0') /* Kubernetes info available */ {
-	  event->kube.pod = strdup(container_info->kube_pod.c_str());
-	  event->kube.ns  = strdup(container_info->kube_namespace.c_str());
+	if(container_info->docker.name[0] != '\0') /* Docker info available */
+	  event->docker.name = strdup(container_info->docker.name.c_str());	
+	  
+	if(container_info->kube.name[0] != '\0') /* Kubernetes info available */ {
+	  event->kube.name = strdup(container_info->kube.name.c_str());
+	  event->kube.pod  = strdup(container_info->kube.pod.c_str());
+	  event->kube.ns   = strdup(container_info->kube.ns.c_str());
 	}
       }
     }
@@ -282,7 +284,8 @@ extern "C" {
     if(event->father.full_task_path != NULL)
       free(event->father.full_task_path);
 
-    if(event->docker.dname != NULL) free(event->docker.dname);
+    if(event->docker.name != NULL)  free(event->docker.name);
+    if(event->kube.name != NULL)    free(event->kube.name);
     if(event->kube.pod != NULL)     free(event->kube.pod);
     if(event->kube.ns != NULL)      free(event->kube.ns);
   }

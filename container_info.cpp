@@ -104,7 +104,7 @@ static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, vo
 int parse_response(char* buff, int buffsize, struct container_info *entry) {
   int res_found = 0; // 1 if some info has been found
   struct json_object *jobj=NULL, *jlabel=NULL;
-  struct json_object *jdockername, *jconfig, *jpodname, *jkubens;
+  struct json_object *jdockername, *jconfig, *jpodname, *jcname, *jkubens;
   struct json_tokener *jtok;
 
 #ifdef DEBUG
@@ -125,9 +125,19 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
   // Docker name
   if(json_object_object_get_ex(jobj, "Name", &jdockername)) {
     res_found = 1;
-    entry->docker_name = string(json_object_get_string(jdockername)+1);
+    entry->docker.name = string(json_object_get_string(jdockername)+1);
   }
 
+  /*
+    "Labels": {
+        "io.cri-containerd.kind": "container",
+        "io.kubernetes.container.name": "dnsmasq",
+        "io.kubernetes.pod.name": "kube-dns-6bfbdd666c-5jbmx",
+        "io.kubernetes.pod.namespace": "kube-system",
+        "io.kubernetes.pod.uid": "5528e13d-5df8-11e9-a377-001c427c953a"
+    },
+  */
+  
   // Container labels
   if(json_object_object_get_ex(jobj, "Config", &jconfig)) /* json from docker api */
     json_object_object_get_ex(jconfig, "Labels", &jlabel);
@@ -136,16 +146,20 @@ int parse_response(char* buff, int buffsize, struct container_info *entry) {
 
   // Kubernetes info (when available)
   if(jlabel != NULL) {
-    // Etracting kube info
+    // Extracting kube info
     if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.name", &jpodname)) {
       res_found = 1;
-      entry->kube_pod = string(json_object_get_string(jpodname));
+      entry->kube.pod = string(json_object_get_string(jpodname));
     }
 
-    // Etracting kube info
+    if(json_object_object_get_ex(jlabel, "io.kubernetes.container.name", &jcname)) {
+      res_found = 1;
+      entry->kube.name = string(json_object_get_string(jcname));
+    }
+
     if(json_object_object_get_ex(jlabel, "io.kubernetes.pod.namespace", &jkubens)) {
       res_found = 1;
-      entry->kube_namespace  = string(json_object_get_string(jkubens));
+      entry->kube.ns  = string(json_object_get_string(jkubens));
     }
   }
 
@@ -260,6 +274,10 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
     snprintf(comm, sizeof(comm), "%s --namespace=%s  c info %s 2>/dev/null",
 	     ctr_path, ns, t_cgroupid);
 
+#ifdef DEBUG
+      printf("[%s:%u] %s\n", __FILE__, __LINE__, comm);
+#endif
+    
     // piping to the command
     fp = popen(comm, "r");
     if(fp == NULL) {
@@ -270,8 +288,8 @@ int containerd_update_query_cache (char* t_cgroupid, struct container_info **t_d
     }
 
     // concatenate output line by line. Kube info are provided in the fs 8 lines
-    strcpy(buff, "");
-    strcpy(res, "");
+    res[0] = '\0';
+    
     for(int i=0; i<8; i++) {
       if(fgets(buff, sizeof(buff)-1, fp) == NULL) break;
       strncat(res, buff, sizeof(res)-strlen(res)-1);
@@ -313,6 +331,7 @@ int update_namespaces() {
 #ifdef DEBUG
   printf("[%s:%u] %s\n", __FILE__, __LINE__, buf);
 #endif
+  
   if((fp = popen(buf, "r")) == NULL)
     return(-1);
 

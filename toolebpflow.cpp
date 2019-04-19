@@ -290,7 +290,7 @@ void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
 /* ***************************************************** */
 /* ***************************************************** */
 
-static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_kernel_data *event) {
+static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_addr_t *event) {
   char buf1[32], buf2[32];
 
   printf("[addr: %s:%u <-> %s:%u]",
@@ -298,7 +298,7 @@ static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_kernel_data *e
    intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
 }
 
-static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_kernel_data *event) {
+static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_addr_t *event) {
   char buf1[128], buf2[128];
 
   printf("[addr: %s:%u <-> %s:%u]",
@@ -337,9 +337,9 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
    event.father.uid, event.father.gid);
 
   if(event.ip_version == 4)
-    IPV4Handler(t_bpfctx, &event, &event.event.v4);
+    IPV4Handler(t_bpfctx, &event, &event.addr.v4);
   else
-    IPV6Handler(t_bpfctx, &event, &event.event.v6);
+    IPV6Handler(t_bpfctx, &event, &event.addr.v6);
 
   if(event.proto == IPPROTO_TCP) {
     char event_type_str[17];
@@ -355,13 +355,14 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   
  // Container ----- /'/
   if(event.cgroup_id[0] != '\0') {
-    printf("[containerID: %.12s]", event.cgroup_id);
+    printf("[containerID: %s]", event.cgroup_id);
     
-    if(event.docker.dname != NULL)
-      printf("[docker_name: %s]", event.docker.dname);
+    if(event.docker.name != NULL)
+      printf("[docker_name: %s]", event.docker.name);
 
-    if(event.kube.pod && event.kube.ns)
-      printf("[kube_pod: %s][kube_ns: %s]", event.kube.pod, event.kube.ns);
+    if(event.kube.ns)  printf("[kube_name: %s]", event.kube.name);
+    if(event.kube.pod) printf("[kube_pod: %s]",  event.kube.pod);
+    if(event.kube.ns)  printf("[kube_ns: %s]",   event.kube.ns);
   }
 
   printf("\n");
@@ -402,11 +403,11 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   json_object_object_add(j, "sent_packet", json_object_new_int(t_event->sent_packet));
 
   if(t_event->ip_version == 4) {
-    saddr = intoaV4(htonl(t_event->event.v4.saddr), buf1, sizeof(buf1));
-    daddr = intoaV4(htonl(t_event->event.v4.daddr), buf2, sizeof(buf2));
+    saddr = intoaV4(htonl(t_event->addr.v4.saddr), buf1, sizeof(buf1));
+    daddr = intoaV4(htonl(t_event->addr.v4.daddr), buf2, sizeof(buf2));
   } else {
-    saddr = intoaV6(&t_event->event.v6.saddr, buf1, sizeof(buf1));
-    daddr = intoaV6(&t_event->event.v6.daddr, buf2, sizeof(buf2));
+    saddr = intoaV6(&t_event->addr.v6.saddr, buf1, sizeof(buf1));
+    daddr = intoaV6(&t_event->addr.v6.daddr, buf2, sizeof(buf2));
   }
   json_object_object_add(j, "saddr", json_object_new_string(saddr));
   json_object_object_add(j, "daddr", json_object_new_string(daddr));
@@ -424,17 +425,23 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
 
   if(t_event->cgroup_id[0] != '\0')
     json_object_object_add(j, "cgroup_id", json_object_new_string(t_event->cgroup_id));
-  if(t_event->docker.dname != NULL) {
+
+  if(t_event->docker.name != NULL) {
     docker_json = json_object_new_object();
-    json_object_object_add(docker_json, "dname", json_object_new_string(t_event->docker.dname));
+    json_object_object_add(docker_json, "name", json_object_new_string(t_event->docker.name));
     json_object_object_add(j, "docker", docker_json);
   }
   if(t_event->kube.pod) { 
     kube_json = json_object_new_object();
+    if(t_event->kube.name != NULL)
+      json_object_object_add(kube_json, "name", json_object_new_string(t_event->kube.name));
+
     if(t_event->kube.pod != NULL)
       json_object_object_add(kube_json, "pod", json_object_new_string(t_event->kube.pod));
+
     if(t_event->kube.ns != NULL)
       json_object_object_add(kube_json, "ns", json_object_new_string(t_event->kube.ns));
+
     json_object_object_add(j, "kube", kube_json);
   }
   

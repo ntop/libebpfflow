@@ -27,82 +27,15 @@
 #include <linux/if.h>
 #include <string.h>
 
+#define ktime_t u_int64_t
+#define u8 u_int8_t
+#define u16 u_int16_t
+#define u32 u_int32_t
+#define u64 u_int64_t
+
+#include "ebpf_types.h"
+
 /* ******************************************* */
-
-#define COMMAND_LEN       16
-#define CGROUP_ID_LEN     65
-
-/*
- * Events types are forged as follows:
- *  I_digit (=1): init events (e.g. connection creation)
- *          (=2): update events on existing connection
- *          (=3): connection closing
- *          (=5): operation failed
- *  II_digit (=0): tcp events
- *           (=1): udp events
- *  III_digit: discriminate the single event
- * The type is reported in eBPFevent->etype
- */
-typedef enum {
-  eTCP_ACPT = 100,
-  eTCP_CONN = 101,
-  eTCP_CONN_FAIL = 500,
-  eUDP_RECV = 210,
-  eUDP_SEND = 211,
-  eTCP_RETR = 200,
-  eTCP_CLOSE = 300,
-} event_type;
-
-struct taskInfo {
-  __u32 pid; /* Process Id */
-  __u32 tid; /* Thread Id  */
-  __u32 uid; /* User Id    */
-  __u32 gid; /* Group Id   */
-  char task[COMMAND_LEN], *full_task_path;
-};
-  
-// ----- ----- STRUCTS AND CLASSES ----- ----- //
-struct ipv4_kernel_data {
-  __u64 saddr;
-  __u64 daddr;
-};
-
-struct ipv6_kernel_data {
-  unsigned __int128 saddr;
-  unsigned __int128 daddr;  
-};
-
-typedef struct {
-  __u64 ktime; // Absolute kernel time
-  char ifname[IFNAMSIZ]; // net-dev name
-  struct timeval event_time; // Event time, filled during event preprocessing
-  __u8  ip_version, sent_packet;
-  __u16 etype; // event type, supported events are listed in event_type enum
-  
-  union {
-    struct ipv4_kernel_data v4;
-    struct ipv6_kernel_data v6;
-  } event;
-
-  __u8  proto;
-  __u16 sport, dport;
-  __u32 latency_usec;
-  __u16 retransmissions;
-
-  struct taskInfo proc, father;
-
-  char cgroup_id[CGROUP_ID_LEN]; // Container identifier
-
-  // Next fields are initializated to NULL and populated only during preprocessing
-  struct {
-    char *dname; /* Docker container name */
-  } docker;
-  
-  struct {
-    char *pod;
-    char *ns; /* Kubernetes namespace */    
-  } kube;
-} eBPFevent;
 
 typedef enum {
   ebpf_no_error = 0,
