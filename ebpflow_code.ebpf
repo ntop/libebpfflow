@@ -18,45 +18,11 @@
  *
  */
 
-#include <uapi/linux/ptrace.h>
-#include <net/sock.h>
-#include <bcc/proto.h>
-#include <linux/pid_namespace.h>
-#include <uapi/linux/ip.h>
-#include <uapi/linux/udp.h>
-#include <uapi/linux/ipv6.h>
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wtautological-compare"
-#include <net/inet_sock.h>
-#pragma clang diagnostic pop
-
-struct sock_stats {
-  struct sock *sk;
-  u64    ts;
-};
-
-// hash map currsock
-BPF_HASH(currsock, u32, struct sock_stats);
-
-
-// Retransmissions
-struct retr_entry {
-  u64 ts;
-  u16 count;
-};
-#define BPF_LRU_HASH3(_name, _key_type, _leaf_type) BPF_TABLE("lru_hash", _key_type, _leaf_type, _name, 10240)
-BPF_LRU_HASH3(retr_table, u32, struct retr_entry);
-
-#include "ebpf_types.h"
-
-BPF_PERF_OUTPUT(ebpf_events);
-
 struct udp_info {
   struct taskInfo proc, father;
   char cgroup_id[CGROUP_ID_LEN];
 };
 BPF_HASH(udpinfo, u16, struct udp_info);
-
 
 static void fill_ifname(eBPFevent *ev, struct sock *sk);
 
