@@ -36,9 +36,9 @@ libebpfflow.a: ebpf_flow.cpp ebpf_flow.h container_info.o ebpflow.ebpf.enc
 toolebpflow: toolebpflow.cpp libebpfflow.a Makefile
 	g++ $(CFLAGS) toolebpflow.cpp -o $@ libebpfflow.a $(LIBS)
 
-ebpflow.ebpf.enc: ebpflow.ebpf Makefile
+ebpflow.ebpf.enc: ebpflow_header.ebpf ebpf_types.h ebpflow_code.ebpf Makefile
 	echo -n "const char * ebpf_code = R\"(" > ebpflow.ebpf.enc
-	base64 -w 0 ebpflow.ebpf >> ebpflow.ebpf.enc
+	cat ebpflow_header.ebpf ebpf_types.h ebpflow_code.ebpf | base64 -w 0  >> ebpflow.ebpf.enc
 	echo ")\";" >> ebpflow.ebpf.enc
 
 go_toolebpflow: toolebpflow.go Makefile libebpfflow.a
