@@ -50,7 +50,7 @@ void event_summary (eBPFevent* e, char* t_buffer, int t_size);
 static void handleTermination(int t_s=0);
 static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize);
 static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize);
-
+static u_int8_t verbose = 0;
 static int  gRUNNING = 1;
 void *gZMQsocket = NULL;
 
@@ -73,6 +73,7 @@ static const struct option long_opts[] = {
   { "out",      0, NULL, 'o' },
   { "help",     0, NULL, 'h' },
   { "zmq",      0, NULL, 'z' },
+  { "verbose",  0, NULL, 'v' },
   { NULL,       0, NULL,  0  }
 };
 
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
   signal(SIGINT, handleTermination);
 
   // Argument Parsing ----- //
-  while ((ch = getopt_long(argc, argv, "z:rcutioh", long_opts, NULL)) != EOF) {
+  while ((ch = getopt_long(argc, argv, "z:rcutiohv", long_opts, NULL)) != EOF) {
     switch (ch) {
     case 'u':
       flags |= LIBEBPF_UDP;
@@ -108,14 +109,11 @@ int main(int argc, char **argv) {
       flags |= LIBEBPF_TCP_RETR;
       break;
     case 'z':
-      zmq_port = atoi(optarg);
-      if(zmq_port == 0) {
-        printf("Invalid port number: %s \n", optarg);
-        help();
-        return -1;
-      }
-      snprintf(zmq_url, sizeof(zmq_url), "tcp://*:%d", zmq_port);
+      snprintf(zmq_url, sizeof(zmq_url), "%s", optarg);
       handler = zmqHandler;
+      break;
+    case 'v':
+      verbose = 1;
       break;
     default:
       help();
@@ -123,7 +121,7 @@ int main(int argc, char **argv) {
     }
   }
   // Setting defaults
-  if(flags==0)
+  if(flags == 0)
     flags = 0xffff;
 
   if(!(flags & LIBEBPF_INCOMING) && !(flags & LIBEBPF_OUTCOMING))
@@ -200,7 +198,7 @@ void help() {
   printf(
 	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown \n"
 	 "Termination: CTRL-C \n"
-	 "Usage: ebpflow [ OPTIONS ] \n"
+	 "Usage: ebpflowexport [ OPTIONS ] \n"
 	 "   -h, --help        display this message \n"
 	 "   -t, --tcp         TCP events \n"
 	 "   -u, --udp         UDP events \n"
@@ -208,8 +206,9 @@ void help() {
 	 "   -o, --on          Outgoing events (i.e. TCP connect and UDP send) \n"
 	 "   -r, --retr        Retransmissions events \n"
 	 "   -c, --tcpclose    TCP close events \n"
-	 "   -z, --zmq <port>  Rublish json events as a ZeroMQ publisher with envelope 'ebpfflow' \n"
-	 "Note: please run as root \n"
+	 "   -z, --zmq <port>  Publish JSON events as a ZeroMQ publisher with envelope 'ebpfflow' \n"
+	 "                     Example ebpflowexport -z tcp://127.0.0.1:1234\n\n"
+	 "IMPORTANT: please run this tool as root \n"
 	 );
 }
 
@@ -372,11 +371,11 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 void task2json(struct taskInfo *t, struct json_object **t_res) {
   struct json_object *j = json_object_new_object();
  
-  json_object_object_add(j, "pid", json_object_new_int(t->pid));
-  json_object_object_add(j, "tid", json_object_new_int(t->tid));
-  json_object_object_add(j, "uid", json_object_new_int(t->uid));
-  json_object_object_add(j, "gid", json_object_new_int(t->gid));
-  json_object_object_add(j, "task", 
+  json_object_object_add(j, "PID", json_object_new_int(t->pid));
+  json_object_object_add(j, "TID", json_object_new_int(t->tid));
+  json_object_object_add(j, "UID", json_object_new_int(t->uid));
+  json_object_object_add(j, "GID", json_object_new_int(t->gid));
+  json_object_object_add(j, "PROCESS_PATH", 
 			 json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
 
   *t_res = j;
@@ -387,60 +386,102 @@ void task2json(struct taskInfo *t, struct json_object **t_res) {
 void event2json(eBPFevent *t_event, struct json_object **t_res) {
   char buf1[128], buf2[128];
   char *saddr, *daddr;
-  struct json_object *j = json_object_new_object(), 
-    *docker_json = json_object_new_object(),
-    *kube_json = json_object_new_object();
+  const char *t_saddr, *t_daddr;
+  struct json_object *j = json_object_new_object(), *k, *docker_json, *kube_json;
   struct json_object *proc, *father;
+  
+  snprintf(buf1, sizeof(buf1), "%u.%06u",
+	     (unsigned int)t_event->event_time.tv_sec,
+	     (unsigned int)t_event->event_time.tv_usec);
+  json_object_object_add(j, "timestamp", json_object_new_string(buf1));
 
-  json_object_object_add(j, "ktime", json_object_new_int64(t_event->ktime));
-  json_object_object_add(j, "ifname", json_object_new_string(t_event->ifname));
-  json_object_object_add(j, "tv_sec", json_object_new_int(t_event->event_time.tv_sec));
-  json_object_object_add(j, "tc_usec", json_object_new_int(t_event->event_time.tv_usec));
-  json_object_object_add(j, "ip_version", json_object_new_int(t_event->ip_version));
-  json_object_object_add(j, "etype", json_object_new_int(t_event->etype));
-  json_object_object_add(j, "sent_packet", json_object_new_int(t_event->sent_packet));
+  // json_object_object_add(j, "ktime", json_object_new_int64(t_event->ktime));
+  
+  json_object_object_add(j, "IF_NAME", json_object_new_string(t_event->ifname));
+  json_object_object_add(j, "IP_PROTOCOL_VERSION", json_object_new_int(t_event->ip_version));
+
+  if(t_event->proto == IPPROTO_TCP) {
+    char event_type_str[17];
+    
+    event_summary(t_event, event_type_str, sizeof(event_type_str));
+    
+    json_object_object_add(j, "TCP_EVENT_TYPE",
+			   json_object_new_string(event_type_str));
+  } else  
+    json_object_object_add(j, "SENT_PACKET",
+			   json_object_new_boolean(t_event->sent_packet));
 
   if(t_event->ip_version == 4) {
     saddr = intoaV4(htonl(t_event->addr.v4.saddr), buf1, sizeof(buf1));
     daddr = intoaV4(htonl(t_event->addr.v4.daddr), buf2, sizeof(buf2));
+    t_saddr = "IPV4_CLIENT_ADDR", t_daddr  = "IPV4_SERVER_ADDR";
   } else {
     saddr = intoaV6(&t_event->addr.v6.saddr, buf1, sizeof(buf1));
     daddr = intoaV6(&t_event->addr.v6.daddr, buf2, sizeof(buf2));
+    t_saddr = "IPV6_CLIENT_ADDR", t_daddr  = "IPV6_SERVER_ADDR";
   }
-  json_object_object_add(j, "saddr", json_object_new_string(saddr));
-  json_object_object_add(j, "daddr", json_object_new_string(daddr));
- 
-  json_object_object_add(j, "proto", json_object_new_int(t_event->proto));
-  json_object_object_add(j, "sport", json_object_new_int(t_event->sport));
-  json_object_object_add(j, "dport", json_object_new_int(t_event->dport));
-  json_object_object_add(j, "latency_usec", json_object_new_int(t_event->latency_usec));
-  json_object_object_add(j, "retransmissions", json_object_new_int(t_event->retransmissions));
 
-  task2json(&t_event->proc, &proc);
-  json_object_object_add(j, "proc", proc);
-  task2json(&t_event->father, &father);
-  json_object_object_add(j, "father", father);
+  json_object_object_add(j, t_saddr, json_object_new_string(saddr));
+  json_object_object_add(j, t_daddr, json_object_new_string(daddr));
+  
+  json_object_object_add(j, "PROTOCOL", json_object_new_int(t_event->proto));
+  json_object_object_add(j, "L4_CLIENT_PORT", json_object_new_int(t_event->sport));
+  json_object_object_add(j, "L4_SERVER_PORT", json_object_new_int(t_event->dport));
 
-  if(t_event->container_id[0] != '\0')
-    json_object_object_add(j, "container_id", json_object_new_string(t_event->container_id));
+  if(t_event->latency_usec > 0) {
+    double v = t_event->latency_usec/(double)1000;
+    
+    snprintf(buf1, sizeof(buf1), "%.3f", v);
+    json_object_object_add(j, "NW_LATENCY_MS", json_object_new_double_s(v, buf1));
+  }
+  
+  if(t_event->retransmissions > 0)
+    json_object_object_add(j, "RETRAN_PKTS", json_object_new_int(t_event->retransmissions));
 
+  if(t_event->proc.task[0] != '\0') {
+    task2json(&t_event->proc, &proc);
+    json_object_object_add(j, "LOCAL_PROCESS", proc);
+  }
+
+  if(t_event->father.task[0] != '\0') {
+    task2json(&t_event->father, &father);
+    json_object_object_add(j, "LOCAL_FATHER_PROCESS", father);
+  }
+  
   if(t_event->docker.name != NULL) {
-    docker_json = json_object_new_object();
-    json_object_object_add(docker_json, "name", json_object_new_string(t_event->docker.name));
-    json_object_object_add(j, "docker", docker_json);
+    if((k = json_object_new_object()) != NULL) {
+      if((docker_json = json_object_new_object()) != NULL) {	
+	if(t_event->container_id[0] != '\0')
+	  json_object_object_add(docker_json, "ID", json_object_new_string(t_event->container_id));
+	
+	json_object_object_add(docker_json, "NAME", json_object_new_string(t_event->docker.name));
+	json_object_object_add(k, "DOCKER", docker_json);
+	json_object_object_add(j, "LOCAL_CONTAINER", k);
+      } else
+	json_object_put(k);
+    }
   }
-  if(t_event->kube.pod) { 
-    kube_json = json_object_new_object();
-    if(t_event->kube.name != NULL)
-      json_object_object_add(kube_json, "name", json_object_new_string(t_event->kube.name));
-
-    if(t_event->kube.pod != NULL)
-      json_object_object_add(kube_json, "pod", json_object_new_string(t_event->kube.pod));
-
-    if(t_event->kube.ns != NULL)
-      json_object_object_add(kube_json, "ns", json_object_new_string(t_event->kube.ns));
-
-    json_object_object_add(j, "kube", kube_json);
+  
+  if(t_event->kube.pod) {
+    if((k = json_object_new_object()) != NULL) {
+      if((kube_json = json_object_new_object()) != NULL) {
+	if(t_event->container_id[0] != '\0')
+	  json_object_object_add(kube_json, "ID", json_object_new_string(t_event->container_id));
+	
+	if(t_event->kube.name != NULL)
+	  json_object_object_add(kube_json, "NAME", json_object_new_string(t_event->kube.name));
+	
+	if(t_event->kube.pod != NULL)
+	  json_object_object_add(kube_json, "POD", json_object_new_string(t_event->kube.pod));
+	
+	if(t_event->kube.ns != NULL)
+	  json_object_object_add(kube_json, "NS", json_object_new_string(t_event->kube.ns));
+	
+	json_object_object_add(k, "KUBE", kube_json);
+	json_object_object_add(j, "LOCAL_CONTAINER", k);
+      } else
+	json_object_put(k);
+    }
   }
   
   *t_res = j;
@@ -459,9 +500,11 @@ static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   event2json(&event, &json_event);
   json_str = (char*) json_object_get_string(json_event);
 
+  if(verbose) printf("%s\n", json_str);
+  
   // writing event ----- //
   struct zmq_msg_hdr msg_hdr;
-  strncpy(msg_hdr.url, "ebpfflow", sizeof(msg_hdr.url));
+  strncpy(msg_hdr.url, "flow", sizeof(msg_hdr.url));
   msg_hdr.version = 0;
   msg_hdr.size = strlen(json_str);
   zmq_send(gZMQsocket, &msg_hdr, sizeof(msg_hdr), ZMQ_SNDMORE);

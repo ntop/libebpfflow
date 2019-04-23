@@ -70,6 +70,13 @@ eBPF initializated successfully
 ```
 A basic example of usage in c++ can be found in the directory */examples* whereas for the Go language the example provided is the one in */go/ebpf_flow.go*. More details on how to use the library you can be found in the [ntopng](https://github.com/ntop/ntopng) code or by inspecting the code of the tool ebpflowexport application.
 
+### Export eBPF Information to ntopng
+Supposing to start both ebpflowexport and ntopng on the same host do
+
+- ntopng -i tcp://127.0.0.1:1234
+- ebpflowexport -z tcp://127.0.0.1:1234
+
+
 ### Start as a Docker container
 To use ebpflowexport as a Docker container first you have to build the tool. Once the tool has been built, build the docker image from the project root:
 ```sh
