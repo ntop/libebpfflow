@@ -408,7 +408,7 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
     json_object_object_add(j, "TCP_EVENT_TYPE",
 			   json_object_new_string(event_type_str));
   } else  
-    json_object_object_add(j, "SENT_PACKET",
+    json_object_object_add(j, "UDP_SENT_PACKET",
 			   json_object_new_boolean(t_event->sent_packet));
 
   if(t_event->ip_version == 4) {
