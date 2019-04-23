@@ -2,7 +2,7 @@
 print the name of the virtual Ethernet associated with a container given the pid of a task in it.
 ### Build
 ```sh
-$ g++ pid2veth.c -o pid2veth
+$ make
 ```
 ### Testing
 Start a container and get the pid of a process in it.
