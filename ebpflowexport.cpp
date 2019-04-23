@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
     flags += LIBEBPF_INCOMING | LIBEBPF_OUTCOMING;
 
   if(!(flags & LIBEBPF_TCP) && !(flags & LIBEBPF_UDP)
-      && !(flags & LIBEBPF_TCP_CLOSE) && !(flags & eTCP_RETR))
+     && !(flags & LIBEBPF_TCP_CLOSE) && !(flags & eTCP_RETR))
     flags += (LIBEBPF_UDP | LIBEBPF_TCP) | LIBEBPF_TCP_CLOSE;
 
   // Checking root ----- //
@@ -140,8 +140,8 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  printf("Welcome to toolebpflow v.%s\n(C) 2018-19 ntop.org\n",
-    ebpf_flow_version());
+  printf("Welcome to ebpflowexport v.%s\n(C) 2018-19 ntop.org\n",
+	 ebpf_flow_version());
 
   // ZMQ socket initialization ----- //
   if(zmq_port > 0) {
@@ -164,11 +164,11 @@ int main(int argc, char **argv) {
   // Activating libebpflow ----- //
   printf("Initializing eBPF [%s]...\n",
 #ifdef NEW_EBF
-   "New API"
+	 "New API"
 #else
-   "Legacy API"
+	 "Legacy API"
 #endif
-   );
+	 );
   ebpf = init_ebpf_flow(NULL, handler, &rc, flags);
   
   if(!ebpf) {
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
   }
 
   // Cleaning and terminating ----- //
-close:
+ close:
   if(gZMQsocket != NULL)
     zmq_close(gZMQsocket);
   if(context != NULL) 
@@ -198,19 +198,19 @@ close:
 
 void help() {
   printf(
-   "toolebpflow: Traffic visibility tool based on libebpfflow. By default all events will be shown \n"
-   "Termination: CTRL-C \n"
-   "Usage: ebpflow [ OPTIONS ] \n"
-   "   -h, --help        display this message \n"
-   "   -t, --tcp         TCP events \n"
-   "   -u, --udp         UDP events \n"
-   "   -i, --in          incoming events (i.e. TCP accept and UDP receive) \n"
-   "   -o, --on          outgoing events (i.e. TCP connect and UDP send) \n"
-   "   -r, --retr        retransmissions events \n"
-   "   -c, --tcpclose    TCP close events \n"
-   "   -z, --zmq <port>  publish json events as a ZeroMQ publisher with envelope 'ebpfflow' \n"
-   "Note: please run as root \n"
- );
+	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown \n"
+	 "Termination: CTRL-C \n"
+	 "Usage: ebpflow [ OPTIONS ] \n"
+	 "   -h, --help        display this message \n"
+	 "   -t, --tcp         TCP events \n"
+	 "   -u, --udp         UDP events \n"
+	 "   -i, --in          Incoming events (i.e. TCP accept and UDP receive) \n"
+	 "   -o, --on          Outgoing events (i.e. TCP connect and UDP send) \n"
+	 "   -r, --retr        Retransmissions events \n"
+	 "   -c, --tcpclose    TCP close events \n"
+	 "   -z, --zmq <port>  Rublish json events as a ZeroMQ publisher with envelope 'ebpfflow' \n"
+	 "Note: please run as root \n"
+	 );
 }
 
 
@@ -234,7 +234,7 @@ static char* intoaV4(unsigned int addr, char* buf, u_short bufLen) {
       *--cp = byte % 10 + '0';
       byte /= 10;
       if(byte > 0)
-  *--cp = byte + '0';
+	*--cp = byte + '0';
     }
     *--cp = '.';
     addr >>= 8;
@@ -292,16 +292,16 @@ static void IPV4Handler(void* t_bpfctx, eBPFevent *e, struct ipv4_addr_t *event)
   char buf1[32], buf2[32];
 
   printf("[addr: %s:%u <-> %s:%u]",
-   intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
-   intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
+	 intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
+	 intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
 }
 
 static void IPV6Handler(void* t_bpfctx, eBPFevent *e, struct ipv6_addr_t *event) {
   char buf1[128], buf2[128];
 
   printf("[addr: %s:%u <-> %s:%u]",
-   intoaV6(&event->saddr, buf1, sizeof(buf1)), e->sport,
-   intoaV6(&event->daddr, buf2, sizeof(buf2)), e->dport);
+	 intoaV6(&event->saddr, buf1, sizeof(buf1)), e->sport,
+	 intoaV6(&event->daddr, buf2, sizeof(buf2)), e->dport);
 }
 
 /* ***************************************************************** */
@@ -319,20 +319,20 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
 #if 0
   printf("[latency %.1f usec] ",
-   (float)(tp.tv_nsec-(event.ktime % 1000000000))/(float)1000);
+	 (float)(tp.tv_nsec-(event.ktime % 1000000000))/(float)1000);
 #endif
 
   printf("%u.%06u ", (unsigned int)event.event_time.tv_sec, (unsigned int)event.event_time.tv_usec);
 
   printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
-   event.ifname, event.sent_packet ? "Sent" : "Rcvd",
-   (event.proto == IPPROTO_TCP) ? "TCP" : "UDP",
-   event.proc.pid, event.proc.tid,
-   (event.proc.full_task_path == NULL) ? event.proc.task : event.proc.full_task_path,
-   event.proc.uid, event.proc.gid,
-   event.father.pid, event.father.tid,
-   (event.father.full_task_path == NULL) ? event.father.task : event.father.full_task_path,
-   event.father.uid, event.father.gid);
+	 event.ifname, event.sent_packet ? "Sent" : "Rcvd",
+	 (event.proto == IPPROTO_TCP) ? "TCP" : "UDP",
+	 event.proc.pid, event.proc.tid,
+	 (event.proc.full_task_path == NULL) ? event.proc.task : event.proc.full_task_path,
+	 event.proc.uid, event.proc.gid,
+	 event.father.pid, event.father.tid,
+	 (event.father.full_task_path == NULL) ? event.father.task : event.father.full_task_path,
+	 event.father.uid, event.father.gid);
 
   if(event.ip_version == 4)
     IPV4Handler(t_bpfctx, &event, &event.addr.v4);
@@ -348,10 +348,10 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
     
     if(strcmp(event_type_str, "TCP/conn") == 0)
       printf("[latency: %.2f msec]",
-       ((float)event.latency_usec)/(float)1000);
+	     ((float)event.latency_usec)/(float)1000);
   }
   
- // Container ----- /'/
+  // Container ----- /'/
   if(event.container_id[0] != '\0') {
     printf("[containerID: %s]", event.container_id);
     
@@ -377,7 +377,7 @@ void task2json(struct taskInfo *t, struct json_object **t_res) {
   json_object_object_add(j, "uid", json_object_new_int(t->uid));
   json_object_object_add(j, "gid", json_object_new_int(t->gid));
   json_object_object_add(j, "task", 
-    json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
+			 json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
 
   *t_res = j;
 }
