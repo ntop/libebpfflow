@@ -242,7 +242,15 @@ extern "C" {
 
       snprintf(what, sizeof(what), "/proc/%u/exe", task->pid);
       if((l = readlink(what, sym, sizeof(sym))) != -1) {
+	char *space;
+	
         sym[l] = '\0';
+
+	if((space = strchr(sym, ' ')) != NULL) {
+	  if(space[1] == '(') /* (deleted) */
+	    space[0] = '\0';
+	}
+	
         task->full_task_path = strdup(sym);
       }
     }
