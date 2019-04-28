@@ -20,7 +20,7 @@ endif
 
 ###############################################################
 
-CFLAGS=-g -Wall $(JSON_INC) $(LIBCURL_INC)
+CFLAGS=-std=c++11 -g -Wall $(JSON_INC) $(LIBCURL_INC)
 LIBS=-lbcc -lzmq $(JSON_LIB) $(LIBCURL_LIB)
 GOROOT=
 

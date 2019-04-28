@@ -8,6 +8,12 @@ AC_PROG_CXX
 # Use C++ language for tests
 AC_LANG(C++)
 
+AC_CHECK_LIB([bcc], [printf])
+if test "x$ac_cv_lib_bcc_printf" != x""yes; then
+   echo "Please install the bcc-dev(el) package and try again"
+   exit
+fi
+
 # Libs required for compilation test below
 LIBS="${LIBS} -lbcc"
 
@@ -22,6 +28,12 @@ DATE=`date +"%y%m%d"`
 VERSION="1.0.${DATE}"
 
 AC_DEFINE_UNQUOTED(EBPF_FLOW_VERSION, "${VERSION}", "Library version")
+
+AC_CHECK_LIB([json-c], [json_object_new_object])
+if test "x$ac_cv_lib_json_c_json_object_new_object" != x""yes; then
+   echo "Please install the json-c package and try again"
+   exit
+fi
 
 AC_SUBST(EBPF_LIBRARY_VERSION)
 AC_CONFIG_HEADERS(config.h)

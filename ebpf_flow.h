@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <linux/types.h>
+#include <netinet/in.h>
 #include <linux/if.h>
 #include <string.h>
 
