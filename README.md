@@ -90,5 +90,4 @@ $ docker run -it --rm --privileged \
 ### Open Issues
 While the library is already usable in production, we plan to add some additional features including:
 * Implement periodic flow stats exports including bytes/packets/retransmissions
-* Add flow termination export
 
