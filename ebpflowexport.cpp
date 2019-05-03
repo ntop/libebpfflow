@@ -78,8 +78,8 @@ static const struct option long_opts[] = {
 };
 
 int main(int argc, char **argv) {
-  int ch, zmq_port = -1;
-  char zmq_url[14];
+  int ch;
+  char* zmq_endpoint = NULL;
   void *context, *ebpf = NULL;
   short flags = 0;
   ebpfRetCode rc = ebpf_no_error;
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
       flags |= LIBEBPF_TCP_RETR;
       break;
     case 'z':
-      snprintf(zmq_url, sizeof(zmq_url), "%s", optarg);
+      zmq_endpoint = strdup(optarg);
       handler = zmqHandler;
       break;
     case 'v':
@@ -141,21 +141,29 @@ int main(int argc, char **argv) {
   printf("Welcome to ebpflowexport v.%s\n(C) 2018-19 ntop.org\n",
 	 ebpf_flow_version());
 
-  // ZMQ socket initialization ----- //
-  if(zmq_port > 0) {
+  if(zmq_endpoint) {
     context = zmq_ctx_new();
     if(context == NULL) {
       printf("Unable to initialize ZMQ context");
       goto close;
     }
+
     gZMQsocket = zmq_socket(context, ZMQ_PUB);
     if(gZMQsocket == NULL) {
       printf("Unable to create ZMQ socket");
       goto close;  
     }
-    if(zmq_bind(gZMQsocket, zmq_url) != 0) {
-      printf("Unable to bind ZMQ socket to port %d: %s\n", zmq_port, strerror(errno));
-      goto close;
+
+    if(zmq_endpoint[strlen(zmq_endpoint) - 1] == 'c') {
+      /* Collector mode */
+      if(zmq_connect(gZMQsocket, zmq_endpoint) != 0)
+	printf("Unable to connect to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
+    } else {
+      /* Probe mode */
+      if(zmq_bind(gZMQsocket, zmq_endpoint) != 0) {
+	printf("Unable to bind to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
+	goto close;
+      }
     }
   }
 
@@ -187,6 +195,8 @@ int main(int argc, char **argv) {
     zmq_close(gZMQsocket);
   if(context != NULL) 
     zmq_ctx_destroy(context);
+  if(zmq_endpoint)
+    free(zmq_endpoint);
   
   term_ebpf_flow(ebpf);
   printf("eBPF terminated\n");
