@@ -424,19 +424,19 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   if(t_event->ip_version == 4) {
     saddr = intoaV4(htonl(t_event->addr.v4.saddr), buf1, sizeof(buf1));
     daddr = intoaV4(htonl(t_event->addr.v4.daddr), buf2, sizeof(buf2));
-    t_saddr = "IPV4_CLIENT_ADDR", t_daddr  = "IPV4_SERVER_ADDR";
+    t_saddr = "IPV4_SRC_ADDR", t_daddr  = "IPV4_DST_ADDR";
   } else {
     saddr = intoaV6(&t_event->addr.v6.saddr, buf1, sizeof(buf1));
     daddr = intoaV6(&t_event->addr.v6.daddr, buf2, sizeof(buf2));
-    t_saddr = "IPV6_CLIENT_ADDR", t_daddr  = "IPV6_SERVER_ADDR";
+    t_saddr = "IPV6_SRC_ADDR", t_daddr  = "IPV6_DST_ADDR";
   }
 
   json_object_object_add(j, t_saddr, json_object_new_string(saddr));
   json_object_object_add(j, t_daddr, json_object_new_string(daddr));
   
   json_object_object_add(j, "PROTOCOL", json_object_new_int(t_event->proto));
-  json_object_object_add(j, "L4_CLIENT_PORT", json_object_new_int(t_event->sport));
-  json_object_object_add(j, "L4_SERVER_PORT", json_object_new_int(t_event->dport));
+  json_object_object_add(j, "L4_SRC_PORT", json_object_new_int(t_event->sport));
+  json_object_object_add(j, "L4_DST_PORT", json_object_new_int(t_event->dport));
 
   if(t_event->latency_usec > 0) {
     double v = t_event->latency_usec/(double)1000;
