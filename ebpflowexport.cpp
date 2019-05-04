@@ -39,6 +39,9 @@
 #include <bcc/BPF.h>
 #include <zmq.h>
 #include <json-c/json.h>
+#include <sys/types.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "ebpf_flow.h"
 
@@ -46,7 +49,6 @@
 void help();
 static char* intoaV4(unsigned int addr, char* buf, u_short bufLen);
 char* intoaV6(unsigned __int128 addr, char* buf, u_short bufLen);
-void event_summary (eBPFevent* e, char* t_buffer, int t_size);
 static void handleTermination(int t_s=0);
 static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize);
 static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize);
@@ -206,19 +208,20 @@ int main(int argc, char **argv) {
 
 void help() {
   printf(
-	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown \n"
-	 "Termination: CTRL-C \n"
-	 "Usage: ebpflowexport [ OPTIONS ] \n"
-	 "   -h, --help        display this message \n"
-	 "   -t, --tcp         TCP events \n"
-	 "   -u, --udp         UDP events \n"
-	 "   -i, --in          Incoming events (i.e. TCP accept and UDP receive) \n"
-	 "   -o, --on          Outgoing events (i.e. TCP connect and UDP send) \n"
-	 "   -r, --retr        Retransmissions events \n"
-	 "   -c, --tcpclose    TCP close events \n"
-	 "   -z, --zmq <port>  Publish JSON events as a ZeroMQ publisher with envelope 'ebpfflow' \n"
+	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown\n"
+	 "Termination: CTRL-C\n"
+	 "Usage: ebpflowexport [ OPTIONS ]\n"
+	 "   -h, --help        display this message\n"
+	 "   -v                Verbose\n"
+	 "   -t, --tcp         TCP events\n"
+	 "   -u, --udp         UDP events\n"
+	 "   -i, --in          Incoming events (i.e. TCP accept and UDP receive)\n"
+	 "   -o, --on          Outgoing events (i.e. TCP connect and UDP send)\n"
+	 "   -r, --retr        Retransmissions events\n"
+	 "   -c, --tcpclose    TCP close events\n"
+	 "   -z, --zmq <port>  Publish JSON events as a ZeroMQ publisher with envelope 'ebpfflow'\n"
 	 "                     Example ebpflowexport -z tcp://127.0.0.1:1234\n\n"
-	 "IMPORTANT: please run this tool as root \n"
+	 "IMPORTANT: please run this tool as root\n"
 	 );
 }
 
@@ -268,30 +271,33 @@ static char* intoaV6(void *addr, char* buf, u_short bufLen) {
 /* ***************************************** */
 // ===== ===== CALLBACK HANDLERS ===== ===== //
 /* ***************************************** */
-void event_summary (eBPFevent* e, char* t_buffer, int t_size) {
-  switch (e->etype) {
+
+const char* event_summary(eBPFevent* e) {
+  switch(e->etype) {
   case eTCP_ACPT:
-    strncpy(t_buffer, "TCP/acpt",  t_size);
+    return("ACCEPT");
     break;
   case eTCP_CONN:
-    strncpy(t_buffer, "TCP/conn",  t_size);
+    return("CONNECT");
     break;
   case eTCP_CONN_FAIL:
-    strncpy(t_buffer, "TCP/conn *fail*",  t_size);
+    return("CONNECT_FAILED");
     break;
   case eTCP_CLOSE:
-    strncpy(t_buffer, "TCP/close",  t_size);
+    return("CLOSE");
     break;
   case eTCP_RETR:
-    strncpy(t_buffer, "TCP/retr",  t_size);
+    return("RETRANSMIT");
     break;
   case eUDP_SEND:
-    strncpy(t_buffer, "UDP/send",  t_size);
+    return("SEND");
     break;
   case eUDP_RECV:
-    strncpy(t_buffer, "UDP/recv",  t_size);
+    return("RECV");
     break;
   }
+
+  return("???");
 }
 
 /* ***************************************************** */
@@ -349,15 +355,10 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
     IPV6Handler(t_bpfctx, &event, &event.addr.v6);
 
   if(event.proto == IPPROTO_TCP) {
-    char event_type_str[17];
+    printf("[%s]", event_summary(&event));
     
-    event_summary(&event, event_type_str, sizeof(event_type_str));
-
-    printf("[%s]", event_type_str);
-    
-    if(strcmp(event_type_str, "TCP/conn") == 0)
-      printf("[latency: %.2f msec]",
-	     ((float)event.latency_usec)/(float)1000);
+    if(event.etype == eTCP_CONN)
+      printf("[latency: %.2f msec]", ((float)event.latency_usec)/(float)1000);
   }
   
   // Container ----- /'/
@@ -380,11 +381,22 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
 void task2json(struct taskInfo *t, struct json_object **t_res) {
   struct json_object *j = json_object_new_object();
- 
+  struct passwd *uid_info;
+  struct group *gg;
+  
   json_object_object_add(j, "PID", json_object_new_int(t->pid));
-  json_object_object_add(j, "TID", json_object_new_int(t->tid));
+
   json_object_object_add(j, "UID", json_object_new_int(t->uid));
+  if((uid_info = getpwuid(t->pid)) != NULL)
+    json_object_object_add(j, "UID_NAME", json_object_new_string(uid_info->pw_name));
+  
   json_object_object_add(j, "GID", json_object_new_int(t->gid));
+  
+  if((gg = getgrgid(t->gid)) != NULL)	
+    json_object_object_add(j, "GID_NAME", json_object_new_string(gg->gr_name));
+
+  json_object_object_add(j, "TID", json_object_new_int(t->tid));
+
   json_object_object_add(j, "PROCESS_PATH", 
 			 json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
 
@@ -410,16 +422,9 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   json_object_object_add(j, "IF_NAME", json_object_new_string(t_event->ifname));
   json_object_object_add(j, "IP_PROTOCOL_VERSION", json_object_new_int(t_event->ip_version));
 
-  if(t_event->proto == IPPROTO_TCP) {
-    char event_type_str[17];
-    
-    event_summary(t_event, event_type_str, sizeof(event_type_str));
-    
-    json_object_object_add(j, "TCP_EVENT_TYPE",
-			   json_object_new_string(event_type_str));
-  } else  
-    json_object_object_add(j, "UDP_SENT_PACKET",
-			   json_object_new_boolean(t_event->sent_packet));
+  json_object_object_add(j,
+			 (t_event->proto == IPPROTO_TCP) ? "TCP_EVENT_TYPE" : "UDP_EVENT_TYPE",
+			 json_object_new_string(event_summary(t_event)));
 
   if(t_event->ip_version == 4) {
     saddr = intoaV4(htonl(t_event->addr.v4.saddr), buf1, sizeof(buf1));
