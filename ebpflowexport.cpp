@@ -492,7 +492,7 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
 	if(t_event->kube.ns != NULL)
 	  json_object_object_add(kube_json, "NS", json_object_new_string(t_event->kube.ns));
 	
-	json_object_object_add(k, "KUBE", kube_json);
+	json_object_object_add(k, "K8S", kube_json);
 	json_object_object_add(j, "LOCAL_CONTAINER", k);
       } else
 	json_object_put(k);
