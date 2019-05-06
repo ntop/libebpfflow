@@ -445,9 +445,10 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
 
   if(t_event->latency_usec > 0) {
     double v = t_event->latency_usec/(double)1000;
-    
     snprintf(buf1, sizeof(buf1), "%.3f", v);
-    json_object_object_add(j, "NW_LATENCY_MS", json_object_new_double_s(v, buf1));
+    // Not supported on centOS
+    //json_object_object_add(j, "NW_LATENCY_MS", json_object_new_double_s(v, buf1));
+    json_object_object_add(j, "NW_LATENCY_MS", json_object_new_string(buf1));
   }
   
   if(t_event->retransmissions > 0)

@@ -18,6 +18,8 @@
  *
  */
 
+//#define LEGACY_KERNEL_VERSION 1
+
 struct udp_info {
   struct taskInfo proc, father;
   char container_id[CONTAINER_ID_LEN];
@@ -73,12 +75,14 @@ static void fill_father_task_info(struct taskInfo *task) {
 
 /* ******************************************* */
 
-static void fill_container_id(char *container_id) {
+static void fill_container_id(char *container_id) /* CENTOS linux<3.15*/ {
   struct task_struct *curr_task;
-  struct cgroup *cg;
   struct css_set *css;
   struct cgroup_subsys_state *sbs;
+  struct cgroup *cg;
   struct kernfs_node *knode, *pknode;
+  char *name;
+  int name_shift = 0;
 
   // Initializing to root cgroup
   memcpy(container_id, "/\0", 2);
@@ -88,16 +92,23 @@ static void fill_container_id(char *container_id) {
   bpf_probe_read(&sbs, sizeof(void *), &css->subsys[0]);
   bpf_probe_read(&cg,  sizeof(void *), &sbs->cgroup);
 
+#ifdef LEGACY_KERNEL_VERSION 
+  bpf_probe_read(&name, sizeof(void *), &cg->name);
+  // Docker name cgroup as follows: "docker-<containerid>"
+  bpf_probe_read(container_id, CONTAINER_ID_LEN, name+sizeof(struct cgroup_name));
+  container_id[CONTAINER_ID_LEN-1] = '\0';
+#else 
   // Reading fspath
   bpf_probe_read(&knode, sizeof(void *), &cg->kn);
   bpf_probe_read(&pknode, sizeof(void *), &knode->parent);
 
   if(pknode != NULL) {
     char *aus;
-
+  
     bpf_probe_read(&aus, sizeof(void *), &knode->name);
     bpf_probe_read_str(container_id, CONTAINER_ID_LEN, aus);
   }
+#endif
 }
 
 /* ******************************************* */

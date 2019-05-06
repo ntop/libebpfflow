@@ -18,7 +18,7 @@
  *
  */
 
-#define CONTAINER_ID_LEN 65 // max is in limits.h -> NAME_MAX
+#define CONTAINER_ID_LEN 128 // max is in dcache.h > DNAME_INLINE_LEN
 
 #define COMMAND_LEN 16 // defined in sched.h
 

@@ -29,6 +29,7 @@
 #include <vector>
 #include <set>
 #include <regex>
+#include <iostream>
 
 #include <curl/curl.h>
 #include <json-c/json.h>
@@ -37,6 +38,7 @@
 
 #define DOCKERD_SOCK_PATH "/var/run/docker.sock"
 #define MICROK8S_CTR_PATH "/snap/bin/microk8s.ctr"
+
 
 // Used to store libcurl partial results
 struct response_buffer {
@@ -255,8 +257,14 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
 
   (*t_dqr) = NULL;
 
-  if(!regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
-    return -1;
+  try {
+    regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"));
+  } catch (std::regex_error& e) {
+#ifdef DEBUG
+  printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
+#endif
+    return(-1);
+  }
 
   for(s = namespaces.begin(); s != namespaces.end(); ++s) {
     ns = (char*) (*s).c_str();
@@ -266,8 +274,14 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
     // otherwise there's a risk of command injection
     // cgroupid has been already sanitized
     /* ***** ***** ****************** ***** ***** */
-    if(!regex_match(*s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$")))
-      return -1;
+    try {
+      regex_match(*s, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"));
+    } catch (std::regex_error& e) {
+#ifdef DEBUG
+      printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
+#endif
+      return(-1);
+    }
 
     snprintf(comm, sizeof(comm), "%s --namespace=%s c info %s 2>/dev/null",
 	     ctr_path, ns, t_containerid);

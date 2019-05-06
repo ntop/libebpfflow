@@ -37,6 +37,9 @@
 
 static ContainerInfo cinfo;
 
+//#define HAVE_NEW_EBPF
+
+
 /* ******************************************* */
 
 std::string b64decode(const void* data, const size_t len) {
@@ -274,16 +277,22 @@ extern "C" {
       event->container_id[0] = '\0';
     else {
       event->docker.name = event->kube.name = event->kube.pod = event->kube.ns = NULL;
-
+      
+      // Docker names cgroup as follows: "docker-<container_id>.scope"
+      if(strstr(event->container_id, "docker-") != NULL) {
+        event->container_id[71] = '\0';
+        memmove(event->container_id, event->container_id+7, strlen(event->container_id)-6);
+      }
+      
       if(cinfo.get_container_info(event->container_id, &container_info) == 0) {
-	if(container_info->docker.name[0] != '\0') /* Docker info available */
-	  event->docker.name = strdup(container_info->docker.name.c_str());
-
-	if(container_info->kube.name[0] != '\0') /* Kubernetes info available */ {
-	  event->kube.name = strdup(container_info->kube.name.c_str());
-	  event->kube.pod  = strdup(container_info->kube.pod.c_str());
-	  event->kube.ns   = strdup(container_info->kube.ns.c_str());
-	}
+        if(container_info->docker.name[0] != '\0') /* Docker info available */
+          event->docker.name = strdup(container_info->docker.name.c_str());
+       
+        if(container_info->kube.name[0] != '\0') /* Kubernetes info available */ {
+          event->kube.name = strdup(container_info->kube.name.c_str());
+          event->kube.pod  = strdup(container_info->kube.pod.c_str());
+          event->kube.ns   = strdup(container_info->kube.ns.c_str());
+        }
       }
     }
   }
