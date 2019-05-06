@@ -261,7 +261,7 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
     regex_match(cgroupid, std::regex("^([0-9a-zA-Z\\.\\_\\-])*$"));
   } catch (std::regex_error& e) {
 #ifdef DEBUG
-  printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
+    printf("[%s:%u] %s()\n", __FILE__, __LINE__, __FUNCTION__);
 #endif
     return(-1);
   }

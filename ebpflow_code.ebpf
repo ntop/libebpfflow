@@ -74,7 +74,7 @@ static void fill_father_task_info(struct taskInfo *task) {
 
 /* ******************************************* */
 
-static void fill_container_id(char *container_id) /* CENTOS linux<3.15*/ {
+static void fill_container_id(char *container_id) {
   struct task_struct *curr_task;
   struct css_set *css;
   struct cgroup_subsys_state *sbs;
