@@ -25,6 +25,7 @@
 #include <uapi/linux/ip.h>
 #include <uapi/linux/udp.h>
 #include <uapi/linux/ipv6.h>
+#include <linux/version.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wtautological-compare"
 #include <net/inet_sock.h>

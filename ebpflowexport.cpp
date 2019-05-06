@@ -159,12 +159,12 @@ int main(int argc, char **argv) {
     if(zmq_endpoint[strlen(zmq_endpoint) - 1] == 'c') {
       /* Collector mode */
       if(zmq_connect(gZMQsocket, zmq_endpoint) != 0)
-	printf("Unable to connect to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
+        printf("Unable to connect to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
     } else {
       /* Probe mode */
       if(zmq_bind(gZMQsocket, zmq_endpoint) != 0) {
-	printf("Unable to bind to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
-	goto close;
+        printf("Unable to bind to ZMQ socket %s: %s\n", zmq_endpoint, strerror(errno));
+        goto close;
       }
     }
   }

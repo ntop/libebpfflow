@@ -32,13 +32,11 @@
 #include <bcc/BPF.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <linux/version.h>
 
 #include "ebpflow.ebpf.enc"
 
 static ContainerInfo cinfo;
-
-//#define HAVE_NEW_EBPF
-
 
 /* ******************************************* */
 
@@ -100,7 +98,7 @@ static int attachEBPFKernelProbe(ebpf::BPF *bpf, const char *queue_name,
 				 const char *entry_point,
 				 bpf_probe_attach_type attach_type) {
   int rc = bpf->attach_kprobe(queue_name, entry_point,
-#ifdef HAVE_NEW_EBPF
+#if defined HAVE_NEW_EBPF || LINUX_VERSION_CODE <= KERNEL_VERSION(3,15,0) 
 			      0,
 #endif
 			      attach_type).code();
