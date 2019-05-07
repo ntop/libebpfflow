@@ -275,9 +275,6 @@ static int trace_connect_return(struct pt_regs *ctx) {
   
   fill_event(ctx, &event, s->sk, NULL, s->ts, IPPROTO_TCP, 0 /* don't swap */);
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
-  if (ret != 0) { /* Capture failures */
-    event.etype = eTCP_CONN_FAIL;
-  }
 
   currsock.delete(&tid);
 
@@ -315,12 +312,23 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 
 // Fired when the state changes and check if the state is CLOSE
 int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
-  if((state != 7 /* BPF_TCP_CLOSE */) && (state != EINPROGRESS))
+  unsigned char old_state;
+  eBPFevent event = {};
+  
+  if((state != BPF_TCP_CLOSE) && (state != EINPROGRESS))
     return 0;
-
-  eBPFevent event = { .etype = eTCP_CLOSE };
+  
+  // Reading old state
+  bpf_probe_read(&old_state, sizeof(unsigned char), (int*) &sk->__sk_common.skc_state);
 
   fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
+
+  // Connection refused if we move from SYN_SENT to TCP_CLOSE
+  if ((int)old_state == BPF_TCP_SYN_SENT && state == BPF_TCP_CLOSE)   
+    event.etype = eTCP_CONN_FAIL;
+  else 
+    event.etype = eTCP_CLOSE;
+
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
   return 0;
 }

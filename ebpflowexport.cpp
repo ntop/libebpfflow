@@ -218,7 +218,7 @@ void help() {
 	 "   -i, --in          Incoming events (i.e. TCP accept and UDP receive)\n"
 	 "   -o, --on          Outgoing events (i.e. TCP connect and UDP send)\n"
 	 "   -r, --retr        Retransmissions events\n"
-	 "   -c, --tcpclose    TCP close events\n"
+	 "   -c, --tcpclose    TCP connection refused and socket close \n"
 	 "   -z, --zmq <port>  Publish JSON events as a ZeroMQ publisher with envelope 'ebpfflow'\n"
 	 "                     Example ebpflowexport -z tcp://127.0.0.1:1234\n\n"
 	 "IMPORTANT: please run this tool as root\n"
