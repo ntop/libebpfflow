@@ -35,6 +35,8 @@ if test "x$ac_cv_lib_json_c_json_object_new_object" != x""yes; then
    exit
 fi
 
+AC_CHECK_LIB([json-c], json_object_new_double_s, AC_DEFINE_UNQUOTED(HAVE_DOUBLES, 1, [json-c has json_object_new_double_s]))
+
 AC_SUBST(EBPF_LIBRARY_VERSION)
 AC_CONFIG_HEADERS(config.h)
 AC_CONFIG_FILES(Makefile)

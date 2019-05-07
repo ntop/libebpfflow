@@ -314,22 +314,25 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
   unsigned char old_state;
   eBPFevent event = {};
-  
-  if((state != BPF_TCP_CLOSE) && (state != EINPROGRESS))
+
+  /*
+  if((state != TCP_CLOSE) && (state != EINPROGRESS))
     return 0;
   
   // Reading old state
-  bpf_probe_read(&old_state, sizeof(unsigned char), (int*) &sk->__sk_common.skc_state);
+  old_state = sk->__sk_common.skc_state;
+  //bpf_probe_read(&old_state, sizeof(unsigned char), (unsigned char*) &sk->__sk_common.skc_state);
 
   fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
 
   // Connection refused if we move from SYN_SENT to TCP_CLOSE
-  if ((int)old_state == BPF_TCP_SYN_SENT && state == BPF_TCP_CLOSE)   
+  if (((int)old_state == TCP_SYN_SENT) && (state == TCP_CLOSE))
     event.etype = eTCP_CONN_FAIL;
   else 
     event.etype = eTCP_CLOSE;
 
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
+  */
   return 0;
 }
 
