@@ -96,14 +96,14 @@ static void fill_container_id(char *container_id) {
   // Docker name cgroup as follows: "docker-<containerid>"
   bpf_probe_read(container_id, CONTAINER_ID_LEN, name+sizeof(struct cgroup_name));
   container_id[CONTAINER_ID_LEN-1] = '\0';
-#else 
+#else
   // Reading fspath
   bpf_probe_read(&knode, sizeof(void *), &cg->kn);
   bpf_probe_read(&pknode, sizeof(void *), &knode->parent);
 
   if(pknode != NULL) {
     char *aus;
-  
+
     bpf_probe_read(&aus, sizeof(void *), &knode->name);
     bpf_probe_read_str(container_id, CONTAINER_ID_LEN, aus);
   }
@@ -209,7 +209,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
     return(-1);
 
   ev->proc.pid = pid;
-  
+
   if(family == AF_INET) {
     ev->ip_version = 4;
 
@@ -224,7 +224,7 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
       ev->addr.v4.daddr = daddr;
   } else /* (family == AF_INET6)  */ {
     ev->ip_version = 6;
-  
+
     bpf_probe_read(&ev->addr.v6.saddr, sizeof(ev->addr.v6.saddr),
        sk->__sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
     bpf_probe_read(&ev->addr.v6.daddr, sizeof(ev->addr.v6.daddr), sk->__sk_common.skc_v6_daddr.in6_u.u6_addr32);
@@ -271,8 +271,8 @@ static int trace_connect_return(struct pt_regs *ctx) {
   s = currsock.lookup(&tid);
   if(s == NULL)
     return(0); // missed entry
-  
-  
+
+
   fill_event(ctx, &event, s->sk, NULL, s->ts, IPPROTO_TCP, 0 /* don't swap */);
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
 
@@ -312,13 +312,13 @@ int trace_tcp_accept(struct pt_regs *ctx) {
 
 // Fired when the state changes and check if the state is CLOSE
 int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
+#if 0
   unsigned char old_state;
   eBPFevent event = {};
 
-  /*
   if((state != TCP_CLOSE) && (state != EINPROGRESS))
     return 0;
-  
+
   // Reading old state
   old_state = sk->__sk_common.skc_state;
   //bpf_probe_read(&old_state, sizeof(unsigned char), (unsigned char*) &sk->__sk_common.skc_state);
@@ -328,47 +328,23 @@ int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
   // Connection refused if we move from SYN_SENT to TCP_CLOSE
   if (((int)old_state == TCP_SYN_SENT) && (state == TCP_CLOSE))
     event.etype = eTCP_CONN_FAIL;
-  else 
+  else
     event.etype = eTCP_CLOSE;
 
   ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
-  */
+#endif
+  
   return 0;
 }
 
 /* ******************************************* */
 
-int trace_tcp_retransmit_skb (struct pt_regs *ctx, struct sock *sk) {
-  struct retr_entry newentry = { };
-  eBPFevent event = { .etype = eTCP_RETR };
-  struct retr_entry *e;
+int trace_tcp_retransmit_skb(struct pt_regs *ctx, struct sock *sk) {
   u32 tid = (bpf_get_current_pid_tgid() >> 32) & 0xFFFFFFFF;
-  u64 diff;
-  u64 ts = bpf_ktime_get_ns();
-
-  if((e = retr_table.lookup(&tid)) == NULL) {
-    newentry.ts = ts, newentry.count = 1;
-
-    retr_table.update(&tid, &newentry);
-    return -1;
-  } else {
-    e->count += 1;
-    diff = ts - (e->ts);
-
-    if(diff > 1000000000 /* 1 sec */) {
-      fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
-
-      // Setting retransmission count before sending to user space
-      event.retransmissions = e->count;
-      
-      ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
-      
-      // Resetting timer
-      newentry.ts = ts;
-      newentry.count = e->count;
-      retr_table.update(&tid, &newentry);
-    }
-  }
+  eBPFevent event = { .etype = eTCP_RETR, .retransmissions = 1 };
+  
+  fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);  
+  ebpf_events.perf_submit(ctx, &event, sizeof(eBPFevent));
 
   return 0;
 }
