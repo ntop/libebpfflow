@@ -317,10 +317,12 @@ int trace_tcp_set_state(struct pt_regs *ctx, struct sock *sk, int state) {
 
   if((state != TCP_CLOSE) && (state != EINPROGRESS))
     return 0;
-
-  // Reading old state
-  bpf_probe_read(&old_state, sizeof(unsigned char), (unsigned char*) &sk->__sk_common.skc_state);
-
+  else {
+    // Reading old state
+    // bpf_probe_read(&old_state, sizeof(unsigned char), (unsigned char*) &sk->__sk_common.skc_state);
+    old_state = sk->__sk_common.skc_state;
+  }
+  
   fill_event(ctx, &event, sk, NULL, 0, IPPROTO_TCP, 0);
 
   // Connection refused if we move from SYN_SENT to TCP_CLOSE
