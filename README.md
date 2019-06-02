@@ -22,7 +22,7 @@ You need a modern eBPF-enabled Linux distribution.
 
 On Ubuntu 16.04/18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
 ```sh
-$ sudo apt-get install libbpfcc-dev
+$ sudo apt-get install build-essential autoconf automake autogen libjson-c-dev pkg-config libzmq3-dev libcurl4-openssl-dev libbpfcc-dev
 ```
 
 ### Build
