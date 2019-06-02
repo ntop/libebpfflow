@@ -30,10 +30,21 @@ VERSION="1.0.${DATE}"
 AC_DEFINE_UNQUOTED(EBPF_FLOW_VERSION, "${VERSION}", "Library version")
 
 AC_CHECK_LIB([json-c], [json_object_new_object])
-if test "x$ac_cv_lib_json_c_json_object_new_object" != x""yes; then
+if test "x$ac_cv_lib_json_c_json_object_new_object" != "xyes"; then
    echo "Please install the json-c package and try again"
    exit
 fi
+
+AC_CHECK_LIB([zmq], [zmq_socket_monitor])
+if test "x$ac_cv_lib_zmq_zmq_socket_monitor" != "xyes"; then :
+   echo "Please install the ZMQ package and try again"
+   exit
+fi
+
+if ! which pkg-config >/dev/null ; then
+   AC_MSG_ERROR([Missing pkg-config: please check README.md])
+fi
+
 
 AC_CHECK_LIB([json-c], json_object_new_double_s, AC_DEFINE_UNQUOTED(HAVE_DOUBLES, 1, [json-c has json_object_new_double_s]))
 
