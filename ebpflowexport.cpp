@@ -419,7 +419,7 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
 
   // json_object_object_add(j, "ktime", json_object_new_int64(t_event->ktime));
   
-  json_object_object_add(j, "IF_NAME", json_object_new_string(t_event->ifname));
+  json_object_object_add(j, "INTERFACE_NAME", json_object_new_string(t_event->ifname));
   json_object_object_add(j, "IP_PROTOCOL_VERSION", json_object_new_int(t_event->ip_version));
 
   json_object_object_add(j,
