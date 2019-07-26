@@ -21,6 +21,7 @@
 #ifndef __EBPF_FLOW_H__
 #define __EBPF_FLOW_H__ 1
 
+#include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <linux/types.h>

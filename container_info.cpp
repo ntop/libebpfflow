@@ -99,7 +99,7 @@ static size_t WriteMemoryCallback (void *contents, size_t size, size_t nmemb, vo
  * the docker daemon
  * return(0) if no error occurred -1 otherwise
  */
-int ContainerInfo::parse_response(char* buff, int buffsize, struct container_info *entry) {
+int ContainerInfo::parse_response(const char* buff, ssize_t buffsize, struct container_info *entry) {
   int res_found = 0; // 1 if some info has been found
   struct json_object *jobj=NULL, *jlabel=NULL;
   struct json_object *jdockername, *jconfig, *jpodname, *jcname, *jkubens;
@@ -244,11 +244,11 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
 						  struct container_info **t_dqr) {
   FILE *fp;
   char *ns;
-  char res[700];
-  char comm[132]; // 48 for "ctr --namespace=<ns> c i <c_id> 2>/dev/null" + 64 for containerid + 20 for namespace
-  char buff[120];
+  char comm[256];
+  char buff[LINE_MAX];
   std::string cgroupid(t_containerid);
   std::set<std::string>::iterator s;
+  std::string result;
   struct cache_entry ce;
 
 #ifdef DEBUG
@@ -299,21 +299,14 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
       return -1;
     }
 
-    // concatenate output line by line. Kube info are provided in the fs 8 lines
-    res[0] = '\0';
-    
-    for(int i=0; i<8; i++) {
-      if(fgets(buff, sizeof(buff)-1, fp) == NULL) break;
-      strncat(res, buff, sizeof(res)-strlen(res)-1);
+    while(fgets(buff, sizeof(buff), fp)) {
+      result += buff;
     }
-
-    // only kubernetes info are extracted, we need to repair the json
-    strncat(res, "}}", sizeof(res)-strlen(res)-1);
 
     pclose(fp);
 
     // handling json
-    if(parse_response(res, sizeof(res), &ce.content) == 0)
+    if(parse_response(result.c_str(), result.size(), &ce.content) == 0)
       break;
   }
 
@@ -329,7 +322,7 @@ int ContainerInfo::containerd_update_query_cache (char* t_containerid,
 int ContainerInfo::update_namespaces() {
   FILE *fp;
   int i = 0;
-  char ns[20];
+  char ns[LINE_MAX];
   char buf[90];
 
 #ifdef DEBUG
@@ -347,7 +340,7 @@ int ContainerInfo::update_namespaces() {
   if((fp = popen(buf, "r")) == NULL)
     return(-1);
 
-  while(fgets(ns, sizeof(ns)-1, fp) != NULL) {
+  while(fgets(ns, sizeof(ns), fp) != NULL) {
     char *space;
 
     if(i == 0) /* Fs line is the title */ {
