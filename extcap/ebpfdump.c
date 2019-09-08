@@ -197,7 +197,7 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   
   memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
 
-  ebpf_preprocess_event(&event, true);
+  ebpf_preprocess_event(&event);
 
   gettimeofday(&hdr.ts, NULL);
   hdr.len = hdr.caplen = sizeof(event);
