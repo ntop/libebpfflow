@@ -1,5 +1,5 @@
 pid2veth: pid2veth.c Makefile
-	g++ pid2veth.c -o pid2veth
+	gcc -g pid2veth.c -o pid2veth
 
 
 clean:
