@@ -16,15 +16,19 @@
 #include <fcntl.h>
 #include <string.h>
 #include <getopt.h>
-#include <pcap/pcap.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <time.h>
+#include "pcapio.c"
 
 #include "ebpf_flow.h"
 
+#define offsetof(st, m) __builtin_offsetof(st, m)
+
 #define EBPFDUMP_INTERFACE "ebpf"
 
-#define EXIT_SUCCESS 0
+#define SOCKET_LIBEBPF           2019
+#define EXIT_SUCCESS             0
 
 #define EBPFDUMP_MAX_NBPF_LEN    8192
 #define EBPFDUMP_MAX_DATE_LEN    26
@@ -83,7 +87,7 @@ static size_t extcap_interfaces_num = sizeof(extcap_interfaces) / sizeof(extcap_
 
 static char *extcap_selected_interface   = NULL;
 static char *extcap_capture_fifo         = NULL;
-static pcap_dumper_t *dumper             = NULL;
+static FILE* fp                          = NULL;
 
 /* ***************************************************** */
 
@@ -132,10 +136,10 @@ int exec_head(const char *bin, char *line, size_t line_len) {
 
   fp = popen(bin, "r");
 
-  if (fp == NULL)
+  if(fp == NULL)
     return -1;
 
-  if (fgets(line, line_len-1, fp) == NULL) {
+  if(fgets(line, line_len-1, fp) == NULL) {
     pclose(fp);
     return -1;
   }
@@ -151,18 +155,18 @@ float wireshark_version() {
   char *version, *rev;
   float v = 0;
 
-  if (exec_head("/usr/bin/wireshark -v", line, sizeof(line)) != 0 &&
+  if(exec_head("/usr/bin/wireshark -v", line, sizeof(line)) != 0 &&
       exec_head("/usr/local/bin/wireshark -v", line, sizeof(line)) != 0)
     return 0;
 
   version = strchr(line, ' ');
-  if (version == NULL) return 0;
+  if(version == NULL) return 0;
   version++;
   rev = strchr(version, '.');
-  if (rev == NULL) return 0;
+  if(rev == NULL) return 0;
   rev++;
   rev = strchr(rev, '.');
-  if (rev == NULL) return 0;
+  if(rev == NULL) return 0;
   *rev = '\0';
 
   sscanf(version, "%f", &v);
@@ -191,19 +195,30 @@ void extcap_config() {
 
 static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent *e = (eBPFevent*)t_data;
-  eBPFevent event;
+  u_int len = sizeof(eBPFevent)+4;
+  char buf[len];
+  eBPFevent *event = (eBPFevent*)&buf[4];
   struct timespec tp;
-  struct pcap_pkthdr hdr;
+  struct timeval now;
+  u_int64_t bytes_written = 0;
+  int err;
+  u_int32_t *null_sock_type = (u_int32_t*)buf;
   
-  memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
-
-  ebpf_preprocess_event(&event, true);
-
-  gettimeofday(&hdr.ts, NULL);
-  hdr.len = hdr.caplen = sizeof(event);
+  memcpy(event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
+  ebpf_preprocess_event(event);
   
-  pcap_dump((u_char*)dumper, (struct pcap_pkthdr*)&hdr, (const u_char*)&event);
-  ebpf_free_event(&event);
+  gettimeofday(&now, NULL);
+
+  *null_sock_type = htonl(SOCKET_LIBEBPF);
+  
+  if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
+			   (const u_int8_t*)buf, &bytes_written, &err)) {
+    time_t now = time(NULL);
+    fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
+  }
+
+  fflush(fp); /* Flush buffer */
+  ebpf_free_event(event);
 }
 
 /* ***************************************************** */
@@ -212,16 +227,24 @@ void extcap_capture() {
   ebpfRetCode rc;
   void *ebpf;
   u_int num = 0;
+  u_int64_t bytes_written = 0;
+  int err;
+  u_int8_t success;
 
   ebpf = init_ebpf_flow(NULL, ebpfHandler, &rc, 0xFFFF);
-  
+
   if(ebpf == NULL) {
     fprintf(stderr, "Unable to initialize libebpfflow\n");
     return;
   }
-  
-  if((dumper = pcap_dump_open(pcap_open_dead(DLT_EN10MB, 16384 /* MTU */), extcap_capture_fifo)) == NULL) {
-    fprintf(stderr, "Unable to open the pcap dumper on %s", extcap_capture_fifo);
+
+  if((fp = fopen(extcap_capture_fifo, "wb")) == NULL) {
+    fprintf(stderr, "Unable to create file %s", extcap_capture_fifo);
+    return;
+  }
+
+  if(!libpcap_write_file_header(fp, 0 /* DLT_NULL */, sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
+    fprintf(stderr, "Unable to write file %s header", extcap_capture_fifo);
     return;
   }
 
@@ -236,9 +259,10 @@ void extcap_capture() {
     /* fprintf(stderr, "%u\n", ++num); */
     ebpf_poll_event(ebpf, 10);
   }
-  
+
   term_ebpf_flow(ebpf);
-  pcap_dump_close(dumper);
+
+  fclose(fp);
 }
 
 /* ***************************************************** */
@@ -258,7 +282,17 @@ int main(int argc, char *argv[]) {
   char date_str[EBPFDUMP_MAX_DATE_LEN];
   struct tm* tm_info;
 
-  if (argc == 1) {
+  /* test code */
+  if(0) {
+    eBPFevent x;
+
+    printf("%d\n", offsetof(eBPFevent, proc));
+    printf("%d\n", offsetof(eBPFevent, father));
+
+    return(0);
+  }
+      
+  if(argc == 1) {
     extcap_print_help();
     return EXIT_SUCCESS;
   }
@@ -266,7 +300,7 @@ int main(int argc, char *argv[]) {
   u_int defer_dlts = 0, defer_config = 0, defer_capture = 0;
   while ((result = getopt_long(argc, argv, "h", longopts, &option_idx)) != -1) {
     // fprintf(stderr, "OPT: '%c' VAL: '%s' \n", result, optarg != NULL ? optarg : "");
-    
+
     switch (result) {
       /* mandatory extcap options */
     case EXTCAP_OPT_DEBUG:

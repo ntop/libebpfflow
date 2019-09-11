@@ -18,8 +18,11 @@ endif
 ###############################################################
 
 CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC)
-LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB) -lpcap
+LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB)
 
 ebpfdump: ebpfdump.c Makefile
 	g++ $(CFLAGS) -g ebpfdump.c -o ebpfdump $(LIBS)
+
+clean:
+	/bin/rm -f ebpfdump
 

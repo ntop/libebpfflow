@@ -4,6 +4,8 @@ This is an extcap plugin that allows wireshark to capture system-generated event
 # Installation
 Once you compiled this plugin you need to install it in the 'Extcap path' as specified in the wireshark Help menu
 
+As of the ebpf.lua you need to copy it into ~/.wireshark/plugins/ to interpret eBPF events
+
 # Usage
 Starting wireshark you will see a new interface named 'eBPF interface'. Select it, and start the packet capture.
 

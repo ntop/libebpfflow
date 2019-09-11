@@ -76,7 +76,7 @@ class ContainerInfo {
    * buff: if NULL a dummy entry will be created (not added to the cache)
    * return 0 if no error occurred -1 otherwise 
    */
-  int parse_response(char* buff, int buffsize, struct container_info *entry);
+  int parse_response(const char* buff, ssize_t buffsize, struct container_info *entry);
 
   /* 
    * update_query_cache - query to docker api from docker socket (/var/run/docker.sock) and caches the result.
