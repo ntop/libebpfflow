@@ -105,12 +105,96 @@ void extcap_version() {
 
 /* ***************************************************** */
 
+void kubectl_list_interfaces() {
+  FILE *fd;
+  int rc ;
+  struct stat statbuf;
+  const char *kcmd;
+  char cmd[256];
+
+  if(stat("/snap/bin/microk8s.kubectl", &statbuf) == 0)
+    kcmd = "/snap/bin/microk8s.kubectl";
+  else if(stat("/usr/bin/kubectl", &statbuf) == 0)
+    kcmd = "/usr/bin/kubectl";
+  else
+    return; /* No kubectk */
+
+  snprintf(cmd, sizeof(cmd), "%s get namespace -o 'jsonpath={.items[*].metadata.name}'", kcmd);;
+
+  if((fd = popen(cmd, "r")) != NULL) {
+    char line[1024];
+
+    if(fgets(line, sizeof(line)-1, (FILE*) fd)) {
+      char *tmp, *ns = strtok_r(line, " ", &tmp);
+
+      while(ns) {
+	FILE *fd1;
+	
+	snprintf(cmd, sizeof(cmd), "%s get pod --namespace=%s -o jsonpath='{.items[*].metadata.name}'", kcmd, ns);
+	if((fd1 = popen(cmd, "r")) != NULL) {
+	  char pod[512];
+	  
+	  if(fgets(pod, sizeof(pod)-1, (FILE*) fd1)) {
+	    char *tmp, *ns = strtok_r(pod, " ", &tmp);
+	    FILE *fd2;
+	    
+	    snprintf(cmd, sizeof(cmd),
+		     "%s exec %s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
+		     kcmd, pod);
+
+	    if((fd2 = popen(cmd, "r")) != NULL) {
+	      char ids[32];
+	      
+	      if(fgets(ids, sizeof(ids)-1, (FILE*) fd2)) {
+		FILE *fd3;
+		
+		snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'", atoi(ids));
+		if((fd3 = popen(cmd, "r")) != NULL) {
+		  char ifname[32];
+		  
+		  if(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
+		    ifname[strlen(ifname)-1] = '\0';
+		    // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns, pod, atoi(ids), ifname);
+		    printf("interface {value=%s}{display=Pod %s}\n", ifname, pod);
+		  }
+		  
+		  fclose(fd3);
+		}
+	      }
+	      
+	      fclose(fd2);
+	    }	   	   
+	  }	 
+
+	}
+	
+	fclose(fd1);
+	
+
+
+
+
+
+
+	ns = strtok_r(NULL, " ", &tmp);
+      }
+    }
+
+    fclose(fd);
+  }
+}
+
+/* ***************************************************** */
+
 void extcap_list_interfaces() {
   int i;
 
-  for(i = 0; i < extcap_interfaces_num; i++) {
-    printf("interface {value=%s}{display=%s}\n", extcap_interfaces[i].interface, extcap_interfaces[i].description);
-  }
+  for(i = 0; i < extcap_interfaces_num; i++)
+    printf("interface {value=%s}{display=%s}\n",
+	   extcap_interfaces[i].interface,
+	   extcap_interfaces[i].description);
+
+  kubectl_list_interfaces();
 }
 
 /* ***************************************************** */
@@ -203,14 +287,14 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   u_int64_t bytes_written = 0;
   int err;
   u_int32_t *null_sock_type = (u_int32_t*)buf;
-  
+
   memcpy(event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
   ebpf_preprocess_event(event);
-  
+
   gettimeofday(&now, NULL);
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
-  
+
   if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
 			   (const u_int8_t*)buf, &bytes_written, &err)) {
     time_t now = time(NULL);
@@ -282,6 +366,7 @@ int main(int argc, char *argv[]) {
   char date_str[EBPFDUMP_MAX_DATE_LEN];
   struct tm* tm_info;
 
+#if 0
   /* test code */
   if(0) {
     eBPFevent x;
@@ -291,7 +376,8 @@ int main(int argc, char *argv[]) {
 
     return(0);
   }
-      
+#endif
+
   if(argc == 1) {
     extcap_print_help();
     return EXIT_SUCCESS;
