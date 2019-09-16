@@ -39,8 +39,11 @@ func event_handler (event ebpf_flow.EBPFevent) {
   fmt.Printf("[%s:%d <-> %s:%d]",
     event.Saddr.String(), event.Sport, event.Daddr.String(), event.Dport)
   
-  if(event.Docker != nil) {
-    fmt.Printf("[container_id: %s][name: %s]", event.Cgroup_id[:16], event.Docker.Dname)
+  if (event.Docker != nil) {
+    fmt.Printf("[container_id: %s][name: %s]", event.Container_id[:16], event.Docker.Name)
+  } else if (event.Kube != nil) {
+    fmt.Printf("[container_id: %s][name: %s][ns: %s][pod: %s]", 
+        event.Container_id[:16], event.Kube.Name, event.Kube.Ns, event.Kube.Pod)
   }
   fmt.Printf("\n")
 }

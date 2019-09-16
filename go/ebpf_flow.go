@@ -108,11 +108,12 @@ type TaskInfo struct {
 }
 
 type DockerInfo struct {
-  Dname string // Docker container name
+  Name string // Docker container name
 }
 
 type KubeInfo struct {
-  Pod string
+  Name string // Container name
+  Pod string // Container pod
   Ns string // Kubernetes namespace
 }
 
@@ -135,7 +136,7 @@ type EBPFevent struct {
   Proc TaskInfo
   Father TaskInfo
 
-  Cgroup_id string // Container identifier
+  Container_id string // Container identifier
   // Both next fields are initializated to nil and populated only during preprocessing
   Docker *DockerInfo
   Kube *KubeInfo
@@ -219,25 +220,25 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
     Dport: (uint16)(filled_event.dport),
     Proc: c2TaskInfo(filled_event.proc),
     Father: c2TaskInfo(filled_event.father),
-    Cgroup_id: C.GoString(&filled_event.cgroup_id[0]),
+    Container_id: C.GoString(&filled_event.container_id[0]),
   }
   if(filled_event.ip_version == 4) {
-    ipv4 := (*C.struct_ipv4_kernel_data)(unsafe.Pointer(&filled_event.event[0]))
+    ipv4 := (*C.struct_ipv4_addr_t)(unsafe.Pointer(&filled_event.addr[0]))
     goevent.Saddr = make(net.IP, 4)
     binary.LittleEndian.PutUint32(goevent.Saddr, (uint32)(ipv4.saddr))
     goevent.Daddr = make(net.IP, 4)
     binary.LittleEndian.PutUint32(goevent.Daddr, (uint32)(ipv4.daddr))
   } else {
-    ipv6 := (*C.struct_ipv6_kernel_data)(unsafe.Pointer(&filled_event.event[0]))
+    ipv6 := (*C.struct_ipv6_addr_t)(unsafe.Pointer(&filled_event.addr[0]))
     saddr := ([16]byte)(ipv6.saddr)
     goevent.Saddr = net.ParseIP(string(saddr[:]))
     daddr := ([16]byte)(ipv6.daddr)
     goevent.Daddr = net.ParseIP(string(daddr[:]))
   }
 
-  if(filled_event.docker.dname != nil) {
+  if(filled_event.docker.name != nil) {
     goevent.Docker = &DockerInfo {
-      Dname: C.GoString(filled_event.docker.dname),
+      Name: C.GoString(filled_event.docker.name),
     }
   } else {
     goevent.Docker = nil
@@ -245,6 +246,7 @@ func go_handleEvent(t_bpfctx unsafe.Pointer, t_data unsafe.Pointer, t_datalen C.
 
   if(filled_event.kube.pod != nil) {
     goevent.Kube = &KubeInfo {
+      Name: C.GoString(filled_event.kube.name),
       Pod: C.GoString(filled_event.kube.pod),
       Ns: C.GoString(filled_event.kube.ns),
     }
