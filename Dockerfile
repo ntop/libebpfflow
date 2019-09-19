@@ -7,7 +7,7 @@ RUN echo "deb [trusted=yes] http://repo.iovisor.org/apt/bionic bionic-nightly ma
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y libcurl4-openssl-dev libjson-c-dev libzmq3-dev
 
-COPY toolebpflow /usr/share/
+COPY ebpflowexport /usr/share/
 
-ENTRYPOINT ["/usr/share/toolebpflow"]
+ENTRYPOINT ["/usr/share/ebpflowexport"]
 
