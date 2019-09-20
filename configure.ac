@@ -35,6 +35,12 @@ if test "x$ac_cv_lib_json_c_json_object_new_object" != "xyes"; then
    exit
 fi
 
+AC_CHECK_LIB([curl], [curl_easy_init])
+if test "x$ac_cv_lib_curl_curl_easy_init" != "xyes"; then
+   echo "Please install the libcurl (libcurl4-openssl-dev) package and try again"
+   exit
+fi
+
 AC_CHECK_LIB([zmq], [zmq_socket_monitor])
 if test "x$ac_cv_lib_zmq_zmq_socket_monitor" != "xyes"; then :
    echo "Please install the ZMQ package and try again"
