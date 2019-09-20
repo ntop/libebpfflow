@@ -50,6 +50,8 @@
 #define EBPFDUMP_OPT_NAME		'n'
 #define EBPFDUMP_OPT_CUSTOM_NAME	'N'
 
+// #define DEBUG 1
+
 static struct option longopts[] = {
   /* mandatory extcap options */
   { "extcap-interfaces",	no_argument, 		NULL, EXTCAP_OPT_LIST_INTERFACES },
@@ -121,60 +123,97 @@ void kubectl_list_interfaces() {
 
   snprintf(cmd, sizeof(cmd), "%s get namespace -o 'jsonpath={.items[*].metadata.name}'", kcmd);;
 
+#ifdef DEBUG
+  printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+#endif
+
   if((fd = popen(cmd, "r")) != NULL) {
     char line[1024];
 
     if(fgets(line, sizeof(line)-1, (FILE*) fd)) {
       char *tmp, *ns = strtok_r(line, " ", &tmp);
 
+#ifdef DEBUG
+      printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
+#endif
+
       while(ns) {
 	FILE *fd1;
-	
+
 	snprintf(cmd, sizeof(cmd), "%s get pod --namespace=%s -o jsonpath='{.items[*].metadata.name}'", kcmd, ns);
+
+#ifdef DEBUG
+	printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+#endif
+
 	if((fd1 = popen(cmd, "r")) != NULL) {
 	  char pod[512];
-	  
-	  if(fgets(pod, sizeof(pod)-1, (FILE*) fd1)) {
-	    char *tmp, *ns = strtok_r(pod, " ", &tmp);
+
+	  while(fgets(pod, sizeof(pod)-1, (FILE*)fd1)) {
+	    char *tmp, *ns;
 	    FILE *fd2;
-	    
-	    snprintf(cmd, sizeof(cmd),
-		     "%s exec %s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
-		     kcmd, pod);
 
-	    if((fd2 = popen(cmd, "r")) != NULL) {
-	      char ids[32];
-	      
-	      if(fgets(ids, sizeof(ids)-1, (FILE*) fd2)) {
-		FILE *fd3;
-		
-		snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'", atoi(ids));
-		if((fd3 = popen(cmd, "r")) != NULL) {
-		  char ifname[32];
-		  
-		  if(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
-		    ifname[strlen(ifname)-1] = '\0';
-		    // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns, pod, atoi(ids), ifname);
-		    printf("interface {value=%s}{display=Pod %s}\n", ifname, pod);
+#ifdef DEBUG
+	    printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
+#endif
+
+	    ns = strtok_r(pod, " ", &tmp);
+
+	    while(ns != NULL) {
+	      snprintf(cmd, sizeof(cmd),
+		       "%s exec %s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
+		       kcmd, ns);
+
+#ifdef DEBUG
+	      printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+#endif
+
+	      if((fd2 = popen(cmd, "r")) != NULL) {
+		char ids[32];
+
+		while(fgets(ids, sizeof(ids)-1, (FILE*) fd2)) {
+		  FILE *fd3;
+
+#ifdef DEBUG
+		  printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ids);
+#endif
+
+		  snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'", atoi(ids));
+
+#ifdef DEBUG
+		  printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+#endif
+
+		  if((fd3 = popen(cmd, "r")) != NULL) {
+		    char ifname[32];
+
+		    while(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
+#ifdef DEBUG
+		      printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
+#endif
+
+		      ifname[strlen(ifname)-1] = '\0';
+		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns, pod, atoi(ids), ifname);
+		      printf("interface {value=%s}{display=Pod %s}\n", ifname, pod);
+		    }
+
+		    fclose(fd3);
 		  }
-		  
-		  fclose(fd3);
 		}
+
+		fclose(fd2);
 	      }
+
+	      ns = strtok_r(NULL, " ", &tmp);
 	      
-	      fclose(fd2);
-	    }	   	   
-	  }	 
+#ifdef DEBUG
+	      printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns ? ns : "<NULL>");
+#endif		      
+	    }
+	  }
 
+	  fclose(fd1);
 	}
-	
-	fclose(fd1);
-	
-
-
-
-
-
 
 	ns = strtok_r(NULL, " ", &tmp);
       }
