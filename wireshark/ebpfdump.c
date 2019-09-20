@@ -150,19 +150,19 @@ void kubectl_list_interfaces() {
 	  char pod[512];
 
 	  while(fgets(pod, sizeof(pod)-1, (FILE*)fd1)) {
-	    char *tmp, *ns;
+	    char *tmp, *ns1;
 	    FILE *fd2;
 
 #ifdef DEBUG
 	    printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
 #endif
 
-	    ns = strtok_r(pod, " ", &tmp);
+	    ns1 = strtok_r(pod, " ", &tmp);
 
-	    while(ns != NULL) {
+	    while(ns1 != NULL) {
 	      snprintf(cmd, sizeof(cmd),
-		       "%s exec %s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
-		       kcmd, ns);
+		       "%s exec %s --namespace=%s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
+		       kcmd, ns1, ns);
 
 #ifdef DEBUG
 	      printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
@@ -193,8 +193,8 @@ void kubectl_list_interfaces() {
 #endif
 
 		      ifname[strlen(ifname)-1] = '\0';
-		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns, pod, atoi(ids), ifname);
-		      printf("interface {value=%s}{display=Pod %s}\n", ifname, pod);
+		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns1, pod, atoi(ids), ifname);
+		      printf("interface {value=%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns);
 		    }
 
 		    fclose(fd3);
@@ -204,10 +204,10 @@ void kubectl_list_interfaces() {
 		fclose(fd2);
 	      }
 
-	      ns = strtok_r(NULL, " ", &tmp);
+	      ns1 = strtok_r(NULL, " ", &tmp);
 	      
 #ifdef DEBUG
-	      printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns ? ns : "<NULL>");
+	      printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
 #endif		      
 	    }
 	  }
