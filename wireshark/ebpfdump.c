@@ -19,13 +19,14 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pcap.h>
 #include "pcapio.c"
 
 #include "ebpf_flow.h"
 
 #define offsetof(st, m) __builtin_offsetof(st, m)
 
-#define EBPFDUMP_INTERFACE "ebpf"
+#define EBPFDUMP_INTERFACE       "ebpf"
 
 #define SOCKET_LIBEBPF           2019
 #define EXIT_SUCCESS             0
@@ -49,8 +50,6 @@
 #define EBPFDUMP_OPT_HELP		'h'
 #define EBPFDUMP_OPT_NAME		'n'
 #define EBPFDUMP_OPT_CUSTOM_NAME	'N'
-
-// #define DEBUG 1
 
 static struct option longopts[] = {
   /* mandatory extcap options */
@@ -85,24 +84,31 @@ static extcap_interface extcap_interfaces[] = {
   { EBPFDUMP_INTERFACE, "eBPF interface", DLT_EN10MB, NULL, "The EN10MB Ethernet2 DLT" },
 };
 
-static size_t extcap_interfaces_num = sizeof(extcap_interfaces) / sizeof(extcap_interface);
+#define MAX_NUM_INT 32
 
+static size_t extcap_interfaces_num = sizeof(extcap_interfaces) / sizeof(extcap_interface);
+static u_int8_t debug = 0;
 static char *extcap_selected_interface   = NULL;
 static char *extcap_capture_fifo         = NULL;
-static FILE* fp                          = NULL;
+static FILE *fp                          = NULL;
+static char *all_interfaces[MAX_NUM_INT] = { NULL };
+static u_int8_t num_all_interfaces       = 0;
 
 /* ***************************************************** */
 
 void sigproc(int sig) {
   fprintf(stdout, "Exiting...");
   fflush(stdout);
+  exit(0);
 }
 
 /* ***************************************************** */
 
 void extcap_version() {
   /* Print version */
-  printf("extcap {version=%s.%s.%s}\n", EBPFDUMP_VERSION_MAJOR, EBPFDUMP_VERSION_MINOR, EBPFDUMP_VERSION_RELEASE);
+  printf("extcap {version=%s.%s.%s}\n",
+	 EBPFDUMP_VERSION_MAJOR, EBPFDUMP_VERSION_MINOR,
+	 EBPFDUMP_VERSION_RELEASE);
 }
 
 /* ***************************************************** */
@@ -121,11 +127,10 @@ void kubectl_list_interfaces() {
   else
     return; /* No kubectk */
 
-  snprintf(cmd, sizeof(cmd), "%s get namespace -o 'jsonpath={.items[*].metadata.name}'", kcmd);;
+  snprintf(cmd, sizeof(cmd), "%s get namespace -o 'jsonpath={.items[*].metadata.name}'",
+	   kcmd);
 
-#ifdef DEBUG
-  printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
-#endif
+  if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
   if((fd = popen(cmd, "r")) != NULL) {
     char line[1024];
@@ -133,18 +138,15 @@ void kubectl_list_interfaces() {
     if(fgets(line, sizeof(line)-1, (FILE*) fd)) {
       char *tmp, *ns = strtok_r(line, " ", &tmp);
 
-#ifdef DEBUG
-      printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
-#endif
+      if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
 
       while(ns) {
 	FILE *fd1;
 
-	snprintf(cmd, sizeof(cmd), "%s get pod --namespace=%s -o jsonpath='{.items[*].metadata.name}'", kcmd, ns);
+	snprintf(cmd, sizeof(cmd), "%s get pod --namespace=%s -o jsonpath='{.items[*].metadata.name}'",
+		 kcmd, ns);
 
-#ifdef DEBUG
-	printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
-#endif
+	if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 	if((fd1 = popen(cmd, "r")) != NULL) {
 	  char pod[512];
@@ -153,9 +155,7 @@ void kubectl_list_interfaces() {
 	    char *tmp, *ns1;
 	    FILE *fd2;
 
-#ifdef DEBUG
-	    printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
-#endif
+	    if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
 
 	    ns1 = strtok_r(pod, " ", &tmp);
 
@@ -164,9 +164,7 @@ void kubectl_list_interfaces() {
 		       "%s exec %s --namespace=%s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
 		       kcmd, ns1, ns);
 
-#ifdef DEBUG
-	      printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
-#endif
+	      if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 	      if((fd2 = popen(cmd, "r")) != NULL) {
 		char ids[32];
@@ -174,27 +172,25 @@ void kubectl_list_interfaces() {
 		while(fgets(ids, sizeof(ids)-1, (FILE*) fd2)) {
 		  FILE *fd3;
 
-#ifdef DEBUG
-		  printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ids);
-#endif
+		  if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ids);
 
-		  snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'", atoi(ids));
+		  snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'",
+			   atoi(ids));
 
-#ifdef DEBUG
-		  printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
-#endif
+		  if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 		  if((fd3 = popen(cmd, "r")) != NULL) {
 		    char ifname[32];
 
 		    while(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
-#ifdef DEBUG
-		      printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
-#endif
+		      if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
 
 		      ifname[strlen(ifname)-1] = '\0';
 		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns1, pod, atoi(ids), ifname);
 		      printf("interface {value=%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns);
+
+		      if(num_all_interfaces < MAX_NUM_INT)
+			all_interfaces[num_all_interfaces++] = strdup(ifname);
 		    }
 
 		    fclose(fd3);
@@ -206,9 +202,7 @@ void kubectl_list_interfaces() {
 
 	      ns1 = strtok_r(NULL, " ", &tmp);
 	      
-#ifdef DEBUG
-	      printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
-#endif		      
+	      if(debug) printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
 	    }
 	  }
 
@@ -225,8 +219,37 @@ void kubectl_list_interfaces() {
 
 /* ***************************************************** */
 
+void print_pcap_interfaces() {
+  char errbuf[PCAP_ERRBUF_SIZE];
+  pcap_if_t *devpointer;
+  
+  if(pcap_findalldevs(&devpointer, errbuf) == 0) {
+    int i = 0;
+
+    while(devpointer) {
+      if(devpointer->description == NULL) {
+	u_int8_t found = 0, i;
+
+	for(i=0; i<num_all_interfaces; i++)
+	  if(strcmp(all_interfaces[i], devpointer->name) == 0) {
+	    found = 1;
+	    break;
+	  }
+	
+	if(!found)
+	  printf("interface {value=%s}{display=%s}\n",
+		 devpointer->name, devpointer->name);
+      }
+      
+      devpointer = devpointer->next;
+    }
+  }
+}
+
+/* ***************************************************** */
+
 void extcap_list_interfaces() {
-  int i;
+  u_int i;
 
   for(i = 0; i < extcap_interfaces_num; i++)
     printf("interface {value=%s}{display=%s}\n",
@@ -234,6 +257,12 @@ void extcap_list_interfaces() {
 	   extcap_interfaces[i].description);
 
   kubectl_list_interfaces();
+
+  /* Print additional interfaces */
+  print_pcap_interfaces();
+
+  for(i=0; i<num_all_interfaces; i++)
+    free(all_interfaces[i]);
 }
 
 /* ***************************************************** */
@@ -246,7 +275,8 @@ void extcap_dlts() {
     extcap_interface *eif = &extcap_interfaces[i];
 
     if(!strncmp(extcap_selected_interface, eif->interface, strlen(eif->interface))) {
-      printf("dlt {number=%u}{name=%s}{display=%s}\n", eif->dlt, eif->interface, eif->dltdescription);
+      printf("dlt {number=%u}{name=%s}{display=%s}\n",
+	     eif->dlt, eif->interface, eif->dltdescription);
       break;
     }
   }
@@ -316,7 +346,7 @@ void extcap_config() {
 
 /* ***************************************************** */
 
-static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
+static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent *e = (eBPFevent*)t_data;
   u_int len = sizeof(eBPFevent)+4;
   char buf[len];
@@ -327,21 +357,64 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   int err;
   u_int32_t *null_sock_type = (u_int32_t*)buf;
 
-  memcpy(event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
+  /* Copy needed as ebpf_preprocess_event will modify the memory */
+  memcpy(event, e, sizeof(eBPFevent));
   ebpf_preprocess_event(event);
 
   gettimeofday(&now, NULL);
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
 
-  if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
-			   (const u_int8_t*)buf, &bytes_written, &err)) {
-    time_t now = time(NULL);
-    fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
-  }
+  if(extcap_selected_interface != NULL) {
+    /* 
+       We are capturing from a physical interface and here we need
+       to glue events with packets
+    */
 
+    if(strcmp(event->ifname, extcap_selected_interface) == 0) {
+      printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
+	     event->ifname, event->sent_packet ? "Sent" : "Rcvd",
+	     (event->proto == IPPROTO_TCP) ? "TCP" : "UDP",
+	     event->proc.pid, event->proc.tid,
+	     (event->proc.full_task_path == NULL) ? event->proc.task : event->proc.full_task_path,
+	     event->proc.uid, event->proc.gid,
+	     event->father.pid, event->father.tid,
+	     (event->father.full_task_path == NULL) ? event->father.task : event->father.full_task_path,
+	     event->father.uid, event->father.gid);
+	
+      if(event->container_id[0] != '\0') {
+	printf("[containerID: %s]", event->container_id);
+      
+	if(event->docker.name != NULL)
+	  printf("[docker_name: %s]", event->docker.name);
+      
+	if(event->kube.ns)  printf("[kube_name: %s]", event->kube.name);
+	if(event->kube.pod) printf("[kube_pod: %s]",  event->kube.pod);
+	if(event->kube.ns)  printf("[kube_ns: %s]",   event->kube.ns);
+      }
+      
+      printf("\n");
+    } else
+      printf("Skipping event for interface %s\n", event->ifname);
+  } else {
+    if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
+			     (const u_int8_t*)buf, &bytes_written, &err)) {
+      time_t now = time(NULL);
+      fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
+    }
+  }
+  
   fflush(fp); /* Flush buffer */
   ebpf_free_event(event);
+}
+
+/* ***************************************************** */
+
+void pcap_processs_packet(u_char *_deviceId,
+			 const struct pcap_pkthdr *h,
+			 const u_char *p) {
+
+
 }
 
 /* ***************************************************** */
@@ -353,8 +426,17 @@ void extcap_capture() {
   u_int64_t bytes_written = 0;
   int err;
   u_int8_t success;
-
-  ebpf = init_ebpf_flow(NULL, ebpfHandler, &rc, 0xFFFF);
+  pcap_t *pd = NULL;
+  int promisc = 1;
+  int snaplen = 1500;
+  char errbuf[PCAP_ERRBUF_SIZE];
+   
+  if(debug) printf("[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
+		   __FILE__, __LINE__,
+		   extcap_selected_interface ? extcap_selected_interface : "<NULL>",
+		   extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
+  
+  ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
 
   if(ebpf == NULL) {
     fprintf(stderr, "Unable to initialize libebpfflow\n");
@@ -366,7 +448,9 @@ void extcap_capture() {
     return;
   }
 
-  if(!libpcap_write_file_header(fp, 0 /* DLT_NULL */, sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
+  if(!libpcap_write_file_header(fp,
+				extcap_selected_interface ? DLT_EN10MB : 0 /* DLT_NULL */,
+				sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
     fprintf(stderr, "Unable to write file %s header", extcap_capture_fifo);
     return;
   }
@@ -378,11 +462,28 @@ void extcap_capture() {
     return;
   }
 
-  while(1) {
-    /* fprintf(stderr, "%u\n", ++num); */
-    ebpf_poll_event(ebpf, 10);
+  if(extcap_selected_interface) {
+    if((pd = pcap_open_live(extcap_selected_interface,
+			    snaplen, promisc, 1, errbuf)) == NULL) {
+      printf("pcap_open_live: %s\n", errbuf);
+      return;
+    }
+    
+    while(1) {
+      if(pcap_dispatch(pd, 1, pcap_processs_packet, NULL) < 0) break;
+      ebpf_poll_event(ebpf, 1);
+    }
+    
+    pcap_close(pd);
+  } else {
+    /* eBPF-only capture */
+    
+    while(1) {
+      /* fprintf(stderr, "%u\n", ++num); */
+      ebpf_poll_event(ebpf, 10);
+    }
   }
-
+  
   term_ebpf_flow(ebpf);
 
   fclose(fp);
@@ -392,9 +493,21 @@ void extcap_capture() {
 
 int extcap_print_help() {
   printf("Wireshark extcap eBPF plugin by ntop\n");
-  printf("Supported interfaces:\n");
-  extcap_list_interfaces();
-  return 0;
+
+  printf("\nSupported command line options:\n");
+  printf("--extcap-interfaces\n");
+  printf("--extcap-version\n");
+  printf("--extcap-dlts\n");
+  printf("--extcap-interface <name>\n");
+  printf("--extcap-config\n");
+  printf("--capture\n");
+  printf("--fifo <name>\n");
+  printf("--debug\n");
+  printf("--name <name>\n");
+  printf("--custom-name <name>\n");
+  printf("--help\n");
+
+  return(0);
 }
 
 /* ***************************************************** */
@@ -426,9 +539,10 @@ int main(int argc, char *argv[]) {
   while ((result = getopt_long(argc, argv, "h", longopts, &option_idx)) != -1) {
     // fprintf(stderr, "OPT: '%c' VAL: '%s' \n", result, optarg != NULL ? optarg : "");
 
-    switch (result) {
+    switch(result) {
       /* mandatory extcap options */
     case EXTCAP_OPT_DEBUG:
+      debug = 1;
       break;
     case EXTCAP_OPT_LIST_INTERFACES:
       extcap_version();
