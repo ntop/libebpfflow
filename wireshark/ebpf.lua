@@ -1,5 +1,5 @@
 --
--- (C) 20198 - ntop.org
+-- (C) 2019 - ntop.org
 --
 -- This plugin is part of libebpflow (https://github.com/ntop/libebpfflow)
 --
@@ -21,6 +21,8 @@
 local ebpfflow_proto = Proto("ebpfflow", "ebpfflow Protocol Interpreter")
 
 ebpfflow_proto.fields = {}
+
+local f_frame_len         = Field.new("frame.len")
 
 local ebpfflow_fds        = ebpfflow_proto.fields
 ebpfflow_fds.ktime_sec    = ProtoField.new("Kernel time (sec)", "ebpfflow.ktime.sec", ftypes.UINT32)
@@ -47,13 +49,15 @@ ebpfflow_fds.proc_uid     = ProtoField.uint32("ebpfflow.proc_uid", "Event Proces
 ebpfflow_fds.proc_gid     = ProtoField.uint32("ebpfflow.proc_gid", "Event Process GID")
 ebpfflow_fds.proc_task    = ProtoField.new("Event Process Task", "ebpfflow.proc_task", ftypes.STRING)
 
-ebpfflow_fds.father_pid     = ProtoField.uint32("ebpfflow.father_pid", "Event Father PID")
-ebpfflow_fds.father_tid     = ProtoField.uint32("ebpfflow.father_tid", "Event Father TID")
-ebpfflow_fds.father_uid     = ProtoField.uint32("ebpfflow.father_uid", "Event Father UID")
-ebpfflow_fds.father_gid     = ProtoField.uint32("ebpfflow.father_gid", "Event Father GID")
-ebpfflow_fds.father_task    = ProtoField.new("Event Father Task", "ebpfflow.father_task", ftypes.STRING)
+ebpfflow_fds.father_pid   = ProtoField.uint32("ebpfflow.father_pid", "Event Father PID")
+ebpfflow_fds.father_tid   = ProtoField.uint32("ebpfflow.father_tid", "Event Father TID")
+ebpfflow_fds.father_uid   = ProtoField.uint32("ebpfflow.father_uid", "Event Father UID")
+ebpfflow_fds.father_gid   = ProtoField.uint32("ebpfflow.father_gid", "Event Father GID")
+ebpfflow_fds.father_task  = ProtoField.new("Event Father Task", "ebpfflow.father_task", ftypes.STRING)
 
-ebpfflow_fds.container_id   = ProtoField.new("Event Container Id", "ebpfflow.container_id", ftypes.STRING)
+ebpfflow_fds.container_id = ProtoField.new("Event Container Id", "ebpfflow.container_id", ftypes.STRING)
+
+local f_eth_trailer       = Field.new("eth.trailer")
 
 
 -- ebpfflow_fds.application_protocol = ProtoField.new("ebpfflow Application Protocol", "ebpfflow.protocol.application", ftypes.UINT8, nil, base.DEC)
@@ -130,6 +134,36 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 
    if(pinfo.visited == true) then
       local null_type = f_null_type()
+      local eth_trailer = f_eth_trailer()
+
+      if(eth_trailer ~= nil) then
+	 local eth_trailer = getval(eth_trailer)
+	 local magic = string.sub(eth_trailer, 1, 5)
+
+	 if(magic == "19:68") then
+	    local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
+	    local frame_len = getval(f_frame_len())
+
+	    offset = frame_len - 36
+	    ebpf_subtree:add_le(ebpfflow_fds.proc_pid,  tvb:range(offset,4))
+	    offset = offset + 4
+
+	    ebpf_subtree:add_le(ebpfflow_fds.proc_tid,  tvb:range(offset,4))
+	    offset = offset + 4
+
+	    ebpf_subtree:add_le(ebpfflow_fds.proc_uid,  tvb:range(offset,4))
+	    offset = offset + 4
+
+	    ebpf_subtree:add_le(ebpfflow_fds.proc_gid,  tvb:range(offset,4))
+	    offset = offset + 4
+
+	    ebpf_subtree:add_le(ebpfflow_fds.proc_task,  tvb:range(offset,8))
+	    offset = offset + 8
+
+	    ebpf_subtree:add_le(ebpfflow_fds.container_id,  tvb:range(offset,12))
+	    offset = offset + 12
+	 end
+      end
 
       if(null_type ~= nil) then
 	 local null_type = getval(null_type)
@@ -141,10 +175,10 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	    offset = 4 -- DLT_NULL offset
 	    ebpf_subtree:add_le(ebpfflow_fds.ktime_sec,  tvb:range(offset,4))
 	    offset = offset + 4
-	    
+
 	    ebpf_subtree:add_le(ebpfflow_fds.ktime_usec, tvb:range(offset,4))
 	    offset = offset + 4
-	    
+
 	    ebpf_subtree:add(ebpfflow_fds.ifname,     tvb:range(offset,16))
 	    offset = offset + 16
 
@@ -162,7 +196,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	    direction = r:le_uint()
 	    ebpf_subtree:add_le(ebpfflow_fds.direction, r, direction)
 	    offset = offset + 1
-	    
+
 	    etype_r = tvb:range(offset,2)
 	    etype = etype_r:le_uint()
 	    offset = offset + 2
@@ -189,7 +223,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	    offset = offset + 1
 
 	    offset = offset + 1 -- pad
-	    
+
 	    ebpf_subtree:add_le(ebpfflow_fds.sport, tvb:range(offset,2))
 	    offset = offset + 2
 
@@ -199,16 +233,16 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	    if(proto == 6) then
 	       -- TCP
 	       ebpf_subtree:add(ebpfflow_fds.etype, etype_r)
-	       
+
 	       ebpf_subtree:add(ebpfflow_fds.latency, tvb:range(offset,4))
 	       offset = offset + 4
-	       
+
 	       ebpf_subtree:add(ebpfflow_fds.retr, tvb:range(offset,2))
 	       offset = offset + 6
 	    else
 	       offset = offset + 10
-	    end	   
-	    
+	    end
+
 	    -- Tasks
 	    ebpf_subtree:add_le(ebpfflow_fds.proc_pid, tvb:range(offset,4))
 	    offset = offset + 4
@@ -251,7 +285,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	 end
       end
    end
-   
+
    -- ###########################################
 
    -- As we do not need to add fields to the dissection
