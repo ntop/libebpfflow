@@ -20,11 +20,21 @@
 #include <stdlib.h>
 #include <time.h>
 #include <pcap.h>
+#include <arpa/inet.h>
+#include <net/ethernet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip6.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
 #include "pcapio.c"
-
 #include "ebpf_flow.h"
 
-#define offsetof(st, m) __builtin_offsetof(st, m)
+struct ebpf_event {
+  u_int32_t pid, tid, uid, gid;
+  char process_name[8];
+  char container_id[12];
+};
 
 #define EBPFDUMP_INTERFACE       "ebpf"
 
@@ -93,8 +103,57 @@ static char *extcap_capture_fifo         = NULL;
 static FILE *fp                          = NULL;
 static char *all_interfaces[MAX_NUM_INT] = { NULL };
 static u_int8_t num_all_interfaces       = 0;
+static int32_t thiszone;
 
 /* ***************************************************** */
+/* ***************************************************** */
+
+/* LRU cache */
+
+#define NUM_LRU_ENTRIES   256
+
+struct lru_cache_entry {
+  u_int32_t key;
+  u_int8_t is_full;
+  struct ebpf_event value;
+};
+
+struct lru_cache {
+  struct lru_cache_entry entries[NUM_LRU_ENTRIES];
+};
+
+void lru_cache_init(struct lru_cache *c) {
+  memset(c, 0, sizeof(lru_cache));
+}
+
+void lru_free_cache(struct lru_cache *c) {
+  free(c);
+}
+
+u_int8_t lru_find_cache(struct lru_cache *c, u_int32_t key,
+			struct ebpf_event *value) {
+  u_int32_t slot = key % NUM_LRU_ENTRIES;
+
+  if(c->entries[slot].is_full) {
+    memcpy(value, &c->entries[slot].value, sizeof(struct ebpf_event));
+    return(1);
+  } else
+    return(0);
+}
+
+void lru_add_to_cache(struct lru_cache *c, u_int32_t key, struct ebpf_event *value) {
+  u_int32_t slot = key % NUM_LRU_ENTRIES;
+
+  c->entries[slot].is_full = 1, c->entries[slot].key = key;
+  memcpy(&c->entries[slot].value, value, sizeof(struct ebpf_event));
+}
+
+struct lru_cache received_events;
+
+/* ***************************************************** */
+/* ***************************************************** */
+
+inline u_int min(u_int a, u_int b) { return((a < b) ? a : b); }
 
 void sigproc(int sig) {
   fprintf(stdout, "Exiting...");
@@ -201,7 +260,7 @@ void kubectl_list_interfaces() {
 	      }
 
 	      ns1 = strtok_r(NULL, " ", &tmp);
-	      
+
 	      if(debug) printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
 	    }
 	  }
@@ -222,7 +281,7 @@ void kubectl_list_interfaces() {
 void print_pcap_interfaces() {
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_if_t *devpointer;
-  
+
   if(pcap_findalldevs(&devpointer, errbuf) == 0) {
     int i = 0;
 
@@ -235,12 +294,12 @@ void print_pcap_interfaces() {
 	    found = 1;
 	    break;
 	  }
-	
+
 	if(!found)
 	  printf("interface {value=%s}{display=%s}\n",
 		 devpointer->name, devpointer->name);
       }
-      
+
       devpointer = devpointer->next;
     }
   }
@@ -346,75 +405,449 @@ void extcap_config() {
 
 /* ***************************************************** */
 
+/* ******************************************** */
+// ===== ===== IP ADDRESS TO STRING ===== ===== //
+/* ******************************************** */
+static char* intoaV4(unsigned int addr, char* buf, u_short bufLen) {
+  char *cp, *retStr;
+  int n;
+
+  cp = &buf[bufLen];
+  *--cp = '\0';
+
+  n = 4;
+  do {
+    u_int byte = addr & 0xff;
+
+    *--cp = byte % 10 + '0';
+    byte /= 10;
+    if(byte > 0) {
+      *--cp = byte % 10 + '0';
+      byte /= 10;
+      if(byte > 0)
+	*--cp = byte + '0';
+    }
+    *--cp = '.';
+    addr >>= 8;
+  } while (--n > 0);
+
+  /* Convert the string to lowercase */
+  retStr = (char*)(cp+1);
+
+  return(retStr);
+}
+
+static char* intoaV6(void *addr, char* buf, u_short bufLen) {
+  char *ret = (char*)inet_ntop(AF_INET6, addr, buf, bufLen);
+
+  if(ret == NULL)
+    buf[0] = '\0';
+
+  return(buf);
+}
+
+static void IPV4Handler(eBPFevent *e, struct ipv4_addr_t *event, u_int32_t *hashval) {
+  char buf1[32], buf2[32];
+
+  printf("[addr: %s:%u <-> %s:%u]",
+	 intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
+	 intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
+
+  printf("[(%u) %u:%u <-> %u:%u]", e->proto, (u_int32_t)event->saddr, e->sport, (u_int32_t)event->daddr, e->dport);
+
+  *hashval += e->proto + ntohl(event->saddr) + ntohl(event->daddr) + e->sport + e->dport;
+}
+
+static void IPV6Handler(eBPFevent *e, struct ipv6_addr_t *event, u_int32_t *hashval) {
+  char buf1[128], buf2[128];
+  u_int32_t *s = (u_int32_t*)&event->saddr;
+  u_int32_t *d = (u_int32_t*)&event->daddr;
+
+  printf("[addr: %s:%u <-> %s:%u]",
+	 intoaV6(&event->saddr, buf1, sizeof(buf1)), e->sport,
+	 intoaV6(&event->daddr, buf2, sizeof(buf2)), e->dport);
+
+  *hashval += e->proto + e->sport + e->dport;
+
+  *hashval += ntohl(s[0]) + ntohl(s[1]) + ntohl(s[2]) + ntohl(s[3])
+      + ntohl(d[0]) + ntohl(d[1]) + ntohl(d[2]) + ntohl(d[3]);
+}
+
+/* ***************************************************** */
+
 static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
-  eBPFevent *e = (eBPFevent*)t_data;
+  eBPFevent *event = (eBPFevent*)t_data;
   u_int len = sizeof(eBPFevent)+4;
   char buf[len];
-  eBPFevent *event = (eBPFevent*)&buf[4];
   struct timespec tp;
   struct timeval now;
   u_int64_t bytes_written = 0;
   int err;
   u_int32_t *null_sock_type = (u_int32_t*)buf;
 
-  /* Copy needed as ebpf_preprocess_event will modify the memory */
-  memcpy(event, e, sizeof(eBPFevent));
-  ebpf_preprocess_event(event);
-
   gettimeofday(&now, NULL);
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
 
   if(extcap_selected_interface != NULL) {
-    /* 
-       We are capturing from a physical interface and here we need
-       to glue events with packets
+    /*
+      We are capturing from a physical interface and here we need
+      to glue events with packets
     */
 
     if(strcmp(event->ifname, extcap_selected_interface) == 0) {
-      printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
-	     event->ifname, event->sent_packet ? "Sent" : "Rcvd",
-	     (event->proto == IPPROTO_TCP) ? "TCP" : "UDP",
-	     event->proc.pid, event->proc.tid,
-	     (event->proc.full_task_path == NULL) ? event->proc.task : event->proc.full_task_path,
-	     event->proc.uid, event->proc.gid,
-	     event->father.pid, event->father.tid,
-	     (event->father.full_task_path == NULL) ? event->father.task : event->father.full_task_path,
-	     event->father.uid, event->father.gid);
-	
-      if(event->container_id[0] != '\0') {
-	printf("[containerID: %s]", event->container_id);
-      
-	if(event->docker.name != NULL)
-	  printf("[docker_name: %s]", event->docker.name);
-      
-	if(event->kube.ns)  printf("[kube_name: %s]", event->kube.name);
-	if(event->kube.pod) printf("[kube_pod: %s]",  event->kube.pod);
-	if(event->kube.ns)  printf("[kube_ns: %s]",   event->kube.ns);
+      u_int32_t hashval = 0;
+      struct ebpf_event evt;
+
+      if(debug) {
+	printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u]"
+	       "[father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
+	       event->ifname, event->sent_packet ? "Sent" : "Rcvd",
+	       (event->proto == IPPROTO_TCP) ? "TCP" : "UDP",
+	       event->proc.pid, event->proc.tid,
+	       (event->proc.full_task_path == NULL) ? event->proc.task : event->proc.full_task_path,
+	       event->proc.uid, event->proc.gid,
+	       event->father.pid, event->father.tid,
+	       (event->father.full_task_path == NULL) ? event->father.task : event->father.full_task_path,
+	       event->father.uid, event->father.gid);
+
+	if(event->ip_version == 4)
+	  IPV4Handler(event, &event->addr.v4, &hashval);
+	else
+	  IPV6Handler(event, &event->addr.v6, &hashval);
+
+	if(event->container_id[0] != '\0') {
+	  printf("[containerID: %s]", event->container_id);
+
+	  if(event->docker.name != NULL)
+	    printf("[docker_name: %s]", event->docker.name);
+
+	  if(event->kube.ns)  printf("[kube_name: %s]", event->kube.name);
+	  if(event->kube.pod) printf("[kube_pod: %s]",  event->kube.pod);
+	  if(event->kube.ns)  printf("[kube_ns: %s]",   event->kube.ns);
+	}
+
+	printf("[hashval: %u]\n", hashval);
       }
       
-      printf("\n");
-    } else
-      printf("Skipping event for interface %s\n", event->ifname);
+      if(!lru_find_cache(&received_events, hashval, &evt)) {
+	u_int l; /* Trick to avoid silly compiler warnings */
+
+	memset(&evt, 0, sizeof(evt));
+	
+	evt.pid = event->proc.pid, evt.tid = event->proc.tid,
+	  evt.uid = event->proc.uid, evt.gid = event->proc.gid;
+
+	l = min(sizeof(evt.process_name), strlen(event->proc.task));
+	memcpy(evt.process_name, event->proc.task, l);
+
+	l = min(sizeof(evt.container_id), strlen(event->container_id));
+	memcpy(evt.container_id, event->container_id, l);
+	
+	lru_add_to_cache(&received_events, hashval, &evt);
+	// printf("++++ Adding %u\n", hashval);
+      }
+    } else {
+      if(debug)
+	printf("Skipping event for interface %s\n", event->ifname);
+    }
   } else {
     if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
 			     (const u_int8_t*)buf, &bytes_written, &err)) {
       time_t now = time(NULL);
       fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
-    }
+    } else
+      fflush(fp); /* Flush buffer */
   }
-  
-  fflush(fp); /* Flush buffer */
-  ebpf_free_event(event);
+}
+
+/* ****************************************************** */
+
+/*
+ * A faster replacement for inet_ntoa().
+ */
+char* __intoa(unsigned int addr, char* buf, u_short bufLen) {
+  char *cp, *retStr;
+  u_int byte;
+  int n;
+
+  cp = &buf[bufLen];
+  *--cp = '\0';
+
+  n = 4;
+  do {
+    byte = addr & 0xff;
+    *--cp = byte % 10 + '0';
+    byte /= 10;
+    if (byte > 0) {
+      *--cp = byte % 10 + '0';
+      byte /= 10;
+      if (byte > 0)
+	*--cp = byte + '0';
+    }
+    *--cp = '.';
+    addr >>= 8;
+  } while (--n > 0);
+
+  /* Convert the string to lowercase */
+  retStr = (char*)(cp+1);
+
+  return(retStr);
+}
+
+/* ************************************ */
+
+static char buf[sizeof "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"];
+
+char* intoa(unsigned int addr) {
+  return(__intoa(addr, buf, sizeof(buf)));
+}
+
+/* ************************************ */
+
+static inline char* in6toa(struct in6_addr addr6) {
+  snprintf(buf, sizeof(buf),
+	   "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+	   addr6.s6_addr[0], addr6.s6_addr[1], addr6.s6_addr[2],
+	   addr6.s6_addr[3], addr6.s6_addr[4], addr6.s6_addr[5], addr6.s6_addr[6],
+	   addr6.s6_addr[7], addr6.s6_addr[8], addr6.s6_addr[9], addr6.s6_addr[10],
+	   addr6.s6_addr[11], addr6.s6_addr[12], addr6.s6_addr[13], addr6.s6_addr[14],
+	   addr6.s6_addr[15]);
+
+  return(buf);
+}
+
+/* *************************************** */
+
+int32_t gmt_to_local(time_t t) {
+  int dt, dir;
+  struct tm *gmt, *loc;
+  struct tm sgmt;
+
+  if (t == 0)
+    t = time(NULL);
+  gmt = &sgmt;
+  *gmt = *gmtime(&t);
+  loc = localtime(&t);
+  dt = (loc->tm_hour - gmt->tm_hour) * 60 * 60 +
+    (loc->tm_min - gmt->tm_min) * 60;
+
+  /*
+   * If the year or julian day is different, we span 00:00 GMT
+   * and must add or subtract a day. Check the year first to
+   * avoid problems when the julian day wraps.
+   */
+  dir = loc->tm_year - gmt->tm_year;
+  if (dir == 0)
+    dir = loc->tm_yday - gmt->tm_yday;
+  dt += dir * 24 * 60 * 60;
+
+  return (dt);
+}
+
+/* ****************************************************** */
+
+const char* proto2str(u_short proto) {
+  static char protoName[8];
+
+  switch(proto) {
+  case IPPROTO_TCP:  return("TCP");
+  case IPPROTO_UDP:  return("UDP");
+  case IPPROTO_ICMP: return("ICMP");
+  default:
+    snprintf(protoName, sizeof(protoName), "%d", proto);
+    return(protoName);
+  }
+}
+
+/* ****************************************************** */
+
+static char hex[] = "0123456789ABCDEF";
+
+char* etheraddr_string(const u_char *ep, char *buf) {
+  u_int i, j;
+  char *cp;
+
+  cp = buf;
+  if ((j = *ep >> 4) != 0)
+    *cp++ = hex[j];
+  else
+    *cp++ = '0';
+
+  *cp++ = hex[*ep++ & 0xf];
+
+  for(i = 5; (int)--i >= 0;) {
+    *cp++ = ':';
+    if ((j = *ep >> 4) != 0)
+      *cp++ = hex[j];
+    else
+      *cp++ = '0';
+
+    *cp++ = hex[*ep++ & 0xf];
+  }
+
+  *cp = '\0';
+  return (buf);
 }
 
 /* ***************************************************** */
 
 void pcap_processs_packet(u_char *_deviceId,
-			 const struct pcap_pkthdr *h,
-			 const u_char *p) {
+			  const struct pcap_pkthdr *h,
+			  const u_char *pkt) {
+  struct ether_header ehdr;
+  u_short eth_type, vlan_id;
+  const u_char *p = pkt;
+  char buf1[32], buf2[32];
+  int s;
+  struct tcphdr *tp;
+  struct udphdr *up;
+  u_int8_t proto = 0;
+  u_int32_t hashval = 0;
+  u_int64_t bytes_written = 0;
+  int err;
 
+  s = (h->ts.tv_sec + thiszone) % 86400;
 
+  if(debug)
+    printf("%02d:%02d:%02d.%06u ",
+	   s / 3600, (s % 3600) / 60, s % 60,
+	   (unsigned)h->ts.tv_usec);
+
+  memcpy(&ehdr, p, sizeof(struct ether_header));
+  eth_type = ntohs(ehdr.ether_type);
+
+  if(debug)
+    printf("[%s -> %s] ",
+	   etheraddr_string(ehdr.ether_shost, buf1),
+	   etheraddr_string(ehdr.ether_dhost, buf2));
+
+  if(eth_type == 0x8100) {
+    vlan_id = (p[14] & 15)*256 + p[15];
+    eth_type = (p[16])*256 + p[17];
+
+    if(debug)
+      printf("[vlan %u] ", vlan_id);
+
+    p += 4;
+  }
+
+  p += sizeof(ehdr);
+
+  if(eth_type == 0x0800) {
+    struct ip *ip = (struct ip*)p;
+
+    proto = ip->ip_p;
+
+    if(debug) {
+      printf("[%s]", proto2str(ip->ip_p));
+      printf("[%s ", intoa(ntohl(ip->ip_src.s_addr)));
+      printf("-> %s]", intoa(ntohl(ip->ip_dst.s_addr)));
+    }
+
+    hashval = proto + ntohl(ip->ip_src.s_addr) + ntohl(ip->ip_dst.s_addr);
+
+    p += ((u_int16_t)ip->ip_hl * 4);
+  } else if(eth_type == 0x86DD) {
+    struct ip6_hdr *ip6 = (struct ip6_hdr*)p;
+
+    proto = ip6->ip6_nxt;
+
+    if(debug) {
+      printf("[%s ", in6toa(ip6->ip6_src));
+      printf("-> %s]", in6toa(ip6->ip6_dst));
+    }
+
+    hashval = proto
+      + ntohl(ip6->ip6_src.s6_addr32[0])
+      + ntohl(ip6->ip6_src.s6_addr32[1])
+      + ntohl(ip6->ip6_src.s6_addr32[2])
+      + ntohl(ip6->ip6_src.s6_addr32[3])
+      + ntohl(ip6->ip6_dst.s6_addr32[0])
+      + ntohl(ip6->ip6_dst.s6_addr32[1])
+      + ntohl(ip6->ip6_dst.s6_addr32[2])
+      + ntohl(ip6->ip6_dst.s6_addr32[3]);
+
+    p += sizeof(struct ip6_hdr)+htons(ip6->ip6_plen);
+  } else if(eth_type == 0x0806) {
+    if(debug)
+      printf("[ARP]");
+  } else {
+    if(debug)
+      printf("[eth_type=0x%04X]", eth_type);
+  }
+
+  if(proto) {
+    if(debug) printf("[%s]", proto2str(proto));
+
+    switch(proto) {
+    case IPPROTO_TCP:
+      {
+	struct tcphdr *t = (struct tcphdr*)p;
+
+	if(debug)
+	  printf("[%u -> %u]", ntohs(t->source), ntohs(t->dest));
+
+	hashval += ntohs(t->source) + ntohs(t->dest);
+      }
+      break;
+    case IPPROTO_UDP:
+      {
+	struct udphdr *u = (struct udphdr*)p;;
+
+	if(debug)
+	  printf("[%u -> %u]", ntohs(u->source), ntohs(u->dest));
+
+	hashval += ntohs(u->source) + ntohs(u->dest);
+      }
+      break;
+    }
+  }
+
+  if(debug)
+    printf("[caplen=%u][len=%u][hashval=%u]\n", h->caplen, h->len, hashval);
+
+  if(fp) {
+    struct ebpf_event evt;
+
+    if(lru_find_cache(&received_events, hashval, &evt)) {
+      char *packet;
+      u_int new_len = h->caplen + sizeof(struct ebpf_event) + 2;
+      
+      // printf("++++ Found  %u\n", hashval);
+
+      packet = (char*)malloc(new_len);
+
+      if(packet) {
+	if(debug)
+	  printf("========>>>>>> [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u][len: %u -> %u]\n",
+		 evt.process_name, evt.container_id,
+		 evt.pid, evt.tid, evt.uid, evt.gid,
+		 h->caplen, new_len);
+
+	memcpy(packet, pkt, h->caplen);
+	packet[h->caplen] = 0x19;
+	packet[h->caplen+1] = 0x68;
+	memcpy(&packet[h->caplen+2], &evt, sizeof(evt));
+
+	if(!libpcap_write_packet(fp, h->ts.tv_sec, h->ts.tv_usec, new_len, new_len,
+				 (const u_int8_t*)packet, &bytes_written, &err)) {
+	  time_t now = time(NULL);
+	  fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
+	}
+
+	free(packet);
+      }
+    } else {
+#if 0
+      if(!libpcap_write_packet(fp, h->ts.tv_sec, h->ts.tv_usec, h->caplen, h->len,
+			       (const u_int8_t*)pkt, &bytes_written, &err)) {
+	time_t now = time(NULL);
+	fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
+      }
+#endif
+    }
+  }
 }
 
 /* ***************************************************** */
@@ -428,14 +861,14 @@ void extcap_capture() {
   u_int8_t success;
   pcap_t *pd = NULL;
   int promisc = 1;
-  int snaplen = 1500;
+  int snaplen = 1600;
   char errbuf[PCAP_ERRBUF_SIZE];
-   
+
   if(debug) printf("[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
 		   __FILE__, __LINE__,
 		   extcap_selected_interface ? extcap_selected_interface : "<NULL>",
 		   extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
-  
+
   ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
 
   if(ebpf == NULL) {
@@ -448,9 +881,10 @@ void extcap_capture() {
     return;
   }
 
+
   if(!libpcap_write_file_header(fp,
 				extcap_selected_interface ? DLT_EN10MB : 0 /* DLT_NULL */,
-				sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
+				extcap_selected_interface ? 2048:  sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
     fprintf(stderr, "Unable to write file %s header", extcap_capture_fifo);
     return;
   }
@@ -468,22 +902,22 @@ void extcap_capture() {
       printf("pcap_open_live: %s\n", errbuf);
       return;
     }
-    
+
     while(1) {
       if(pcap_dispatch(pd, 1, pcap_processs_packet, NULL) < 0) break;
       ebpf_poll_event(ebpf, 1);
     }
-    
+
     pcap_close(pd);
   } else {
     /* eBPF-only capture */
-    
+
     while(1) {
       /* fprintf(stderr, "%u\n", ++num); */
       ebpf_poll_event(ebpf, 10);
     }
   }
-  
+
   term_ebpf_flow(ebpf);
 
   fclose(fp);
@@ -517,6 +951,9 @@ int main(int argc, char *argv[]) {
   time_t epoch;
   char date_str[EBPFDUMP_MAX_DATE_LEN];
   struct tm* tm_info;
+
+  thiszone = gmt_to_local(0);
+  lru_cache_init(&received_events);
 
 #if 0
   /* test code */
@@ -584,6 +1021,8 @@ int main(int argc, char *argv[]) {
 
   if(extcap_selected_interface)   free(extcap_selected_interface);
   if(extcap_capture_fifo)         free(extcap_capture_fifo);
+
+  lru_free_cache(&received_events);
 
   return EXIT_SUCCESS;
 }

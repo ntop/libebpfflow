@@ -17,7 +17,7 @@ endif
 
 ###############################################################
 
-CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC)
+CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC) -Wformat-truncation
 LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB) -lpcap
 
 ebpfdump: ebpfdump.c Makefile
