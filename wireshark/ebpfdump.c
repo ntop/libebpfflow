@@ -126,10 +126,6 @@ void lru_cache_init(struct lru_cache *c) {
   memset(c, 0, sizeof(lru_cache));
 }
 
-void lru_free_cache(struct lru_cache *c) {
-  free(c);
-}
-
 u_int8_t lru_find_cache(struct lru_cache *c, u_int32_t key,
 			struct ebpf_event *value) {
   u_int32_t slot = key % NUM_LRU_ENTRIES;
@@ -1021,8 +1017,6 @@ int main(int argc, char *argv[]) {
 
   if(extcap_selected_interface)   free(extcap_selected_interface);
   if(extcap_capture_fifo)         free(extcap_capture_fifo);
-
-  lru_free_cache(&received_events);
 
   return EXIT_SUCCESS;
 }
