@@ -58,7 +58,7 @@ struct ebpf_event {
 #define EXTCAP_OPT_FIFO			'F'
 #define EXTCAP_OPT_DEBUG		'D'
 #define EBPFDUMP_OPT_HELP		'h'
-#define EBPFDUMP_OPT_NAME		'n'
+#define EBPFDUMP_OPT_IFNAME		'n'
 #define EBPFDUMP_OPT_CUSTOM_NAME	'N'
 
 static struct option longopts[] = {
@@ -73,8 +73,8 @@ static struct option longopts[] = {
   { "debug", 			optional_argument, 	NULL, EXTCAP_OPT_DEBUG },
 
   /* custom extcap options */
-  { "help", 			no_argument, 		NULL, EBPFDUMP_OPT_HELP },
-  { "name", 			required_argument,	NULL, EBPFDUMP_OPT_NAME },
+  { "help", 			no_argument, 		NULL, EBPFDUMP_OPT_HELP        },
+  { "ifname", 			required_argument,	NULL, EBPFDUMP_OPT_IFNAME      },
   { "custom-name", 		required_argument, 	NULL, EBPFDUMP_OPT_CUSTOM_NAME },
 
   {0, 0, 0, 0}
@@ -97,10 +97,11 @@ static extcap_interface extcap_interfaces[] = {
 #define MAX_NUM_INT 32
 
 static size_t extcap_interfaces_num = sizeof(extcap_interfaces) / sizeof(extcap_interface);
-static u_int8_t debug = 0;
 static char *extcap_selected_interface   = NULL;
+static char *pcap_selected_interface     = NULL;
 static char *extcap_capture_fifo         = NULL;
 static FILE *fp                          = NULL;
+static FILE *log_fp                      = NULL;
 static char *all_interfaces[MAX_NUM_INT] = { NULL };
 static u_int8_t num_all_interfaces       = 0;
 static int32_t thiszone;
@@ -185,7 +186,7 @@ void kubectl_list_interfaces() {
   snprintf(cmd, sizeof(cmd), "%s get namespace -o 'jsonpath={.items[*].metadata.name}'",
 	   kcmd);
 
-  if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
   if((fd = popen(cmd, "r")) != NULL) {
     char line[1024];
@@ -193,7 +194,7 @@ void kubectl_list_interfaces() {
     if(fgets(line, sizeof(line)-1, (FILE*) fd)) {
       char *tmp, *ns = strtok_r(line, " ", &tmp);
 
-      if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
+      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
 
       while(ns) {
 	FILE *fd1;
@@ -201,7 +202,7 @@ void kubectl_list_interfaces() {
 	snprintf(cmd, sizeof(cmd), "%s get pod --namespace=%s -o jsonpath='{.items[*].metadata.name}'",
 		 kcmd, ns);
 
-	if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+	if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 	if((fd1 = popen(cmd, "r")) != NULL) {
 	  char pod[512];
@@ -210,7 +211,7 @@ void kubectl_list_interfaces() {
 	    char *tmp, *ns1;
 	    FILE *fd2;
 
-	    if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
+	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, pod);
 
 	    ns1 = strtok_r(pod, " ", &tmp);
 
@@ -219,7 +220,7 @@ void kubectl_list_interfaces() {
 		       "%s exec %s --namespace=%s --  cat /sys/class/net/eth0/iflink 2>1 /dev/null",
 		       kcmd, ns1, ns);
 
-	      if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+	      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 	      if((fd2 = popen(cmd, "r")) != NULL) {
 		char ids[32];
@@ -227,43 +228,52 @@ void kubectl_list_interfaces() {
 		while(fgets(ids, sizeof(ids)-1, (FILE*) fd2)) {
 		  FILE *fd3;
 
-		  if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ids);
+		  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ids);
 
 		  snprintf(cmd, sizeof(cmd), "ip -o link|grep ^%d:|cut -d ':' -f 2|cut -d '@' -f 1|tr -d '[:blank:]' | sed 's/\\n//g'",
 			   atoi(ids));
 
-		  if(debug) printf("[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+		  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
 		  if((fd3 = popen(cmd, "r")) != NULL) {
 		    char ifname[32];
 
+		    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Pipe open\n", __FILE__, __LINE__);
+		    
 		    while(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
-		      if(debug) printf("[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
+		      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
 
 		      ifname[strlen(ifname)-1] = '\0';
 		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns1, pod, atoi(ids), ifname);
-		      printf("interface {value=%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns);
+		      printf("value {arg=0}{value=%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns);
+		      //printf("value {arg=0}{value=exec_%s}{display=Pod_%s}\n", ifname, ns1);
 
 		      if(num_all_interfaces < MAX_NUM_INT)
 			all_interfaces[num_all_interfaces++] = strdup(ifname);
 		    }
 
 		    fclose(fd3);
+		  } else {
+		    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] popen failed\n", __FILE__, __LINE__);
 		  }
 		}
 
 		fclose(fd2);
+	      } else {
+		if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] popen failed\n", __FILE__, __LINE__);
 	      }
 
 	      ns1 = strtok_r(NULL, " ", &tmp);
 
-	      if(debug) printf("[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
+	      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Next NS %s\n", __FILE__, __LINE__, ns1 ? ns1 : "<NULL>");
 	    }
 	  }
 
 	  fclose(fd1);
+	} else {
+	  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] popen failed\n", __FILE__, __LINE__);
 	}
-
+	
 	ns = strtok_r(NULL, " ", &tmp);
       }
     }
@@ -292,13 +302,63 @@ void print_pcap_interfaces() {
 	  }
 
 	if(!found)
-	  printf("interface {value=%s}{display=%s}\n",
-		 devpointer->name, devpointer->name);
+	  printf("value {arg=0}{value=%s}{display=%s}\n", devpointer->name, devpointer->name);
       }
 
       devpointer = devpointer->next;
     }
   }
+}
+
+/* ***************************************************** */
+
+void extcap_list_all_interfaces() {
+  u_int i;
+
+  kubectl_list_interfaces();
+
+  /* Print additional interfaces */
+  print_pcap_interfaces();
+
+  for(i=0; i<num_all_interfaces; i++)
+    free(all_interfaces[i]);
+}
+
+/* ***************************************************** */
+
+int extcap_print_help() {
+  printf("Wireshark extcap eBPF plugin by ntop\n");
+
+  printf("\nSupported command line options:\n");
+  printf("--extcap-interfaces\n");
+  printf("--extcap-version\n");
+  printf("--extcap-dlts\n");
+  printf("--extcap-interface <name>\n");
+  printf("--extcap-config\n");
+  printf("--capture\n");
+  printf("--fifo <name>\n");
+  printf("--debug\n");
+  printf("--name <name>\n");
+  printf("--custom-name <name>\n");
+  printf("--help\n");
+
+  return(0);
+}
+
+/* ***************************************************** */
+
+void extcap_config() {
+  u_int argidx = 0;
+
+  if(!extcap_selected_interface) {
+    extcap_print_help();
+    return;
+  }
+
+  printf("arg {number=0}{call=--ifname}{display=Interface Name}"
+	 "{type=selector}{tooltip=Network Interface from which packets will be captured}\n");
+
+  extcap_list_all_interfaces();
 }
 
 /* ***************************************************** */
@@ -310,14 +370,6 @@ void extcap_list_interfaces() {
     printf("interface {value=%s}{display=%s}\n",
 	   extcap_interfaces[i].interface,
 	   extcap_interfaces[i].description);
-
-  kubectl_list_interfaces();
-
-  /* Print additional interfaces */
-  print_pcap_interfaces();
-
-  for(i=0; i<num_all_interfaces; i++)
-    free(all_interfaces[i]);
 }
 
 /* ***************************************************** */
@@ -384,26 +436,10 @@ float wireshark_version() {
 
 /* ***************************************************** */
 
-void extcap_config() {
-  u_int argidx = 0;
-
-  if(!extcap_selected_interface) return;
-
-  if(!strncmp(extcap_selected_interface, EBPFDUMP_INTERFACE, strlen(EBPFDUMP_INTERFACE))) {
-    u_int nameidx;
-
-    nameidx = argidx;
-    printf("arg {number=%u}{call=--name}"
-	   "{display=Interface Name}{type=radio}"
-	   "{tooltip=The interface name}\n", argidx++);
-  }
-}
-
-/* ***************************************************** */
-
 /* ******************************************** */
 // ===== ===== IP ADDRESS TO STRING ===== ===== //
 /* ******************************************** */
+
 static char* intoaV4(unsigned int addr, char* buf, u_short bufLen) {
   char *cp, *retStr;
   int n;
@@ -433,6 +469,8 @@ static char* intoaV4(unsigned int addr, char* buf, u_short bufLen) {
   return(retStr);
 }
 
+/* ***************************************************** */
+
 static char* intoaV6(void *addr, char* buf, u_short bufLen) {
   char *ret = (char*)inet_ntop(AF_INET6, addr, buf, bufLen);
 
@@ -442,28 +480,35 @@ static char* intoaV6(void *addr, char* buf, u_short bufLen) {
   return(buf);
 }
 
-static void IPV4Handler(eBPFevent *e, struct ipv4_addr_t *event, u_int32_t *hashval) {
-  char buf1[32], buf2[32];
+/* ***************************************************** */
 
-  printf("[addr: %s:%u <-> %s:%u]",
+static void IPV4Handler(eBPFevent *e, struct ipv4_addr_t *event, u_int32_t *hashval) {
+  if(log_fp) {
+    char buf1[32], buf2[32];
+
+    fprintf(log_fp, "[addr: %s:%u <-> %s:%u]\n",
 	 intoaV4(htonl(event->saddr), buf1, sizeof(buf1)), e->sport,
 	 intoaV4(htonl(event->daddr), buf2, sizeof(buf2)), e->dport);
+  }
 
-  printf("[(%u) %u:%u <-> %u:%u]", e->proto, (u_int32_t)event->saddr, e->sport, (u_int32_t)event->daddr, e->dport);
-
-  *hashval += e->proto + ntohl(event->saddr) + ntohl(event->daddr) + e->sport + e->dport;
+  *hashval = e->proto + ntohl(event->saddr) + ntohl(event->daddr) + e->sport + e->dport;
 }
 
+/* ***************************************************** */
+
 static void IPV6Handler(eBPFevent *e, struct ipv6_addr_t *event, u_int32_t *hashval) {
-  char buf1[128], buf2[128];
   u_int32_t *s = (u_int32_t*)&event->saddr;
   u_int32_t *d = (u_int32_t*)&event->daddr;
 
-  printf("[addr: %s:%u <-> %s:%u]",
-	 intoaV6(&event->saddr, buf1, sizeof(buf1)), e->sport,
-	 intoaV6(&event->daddr, buf2, sizeof(buf2)), e->dport);
+  if(log_fp) {
+    char buf1[128], buf2[128];
 
-  *hashval += e->proto + e->sport + e->dport;
+    fprintf(log_fp, "[addr: %s:%u <-> %s:%u]\n",
+	    intoaV6(&event->saddr, buf1, sizeof(buf1)), e->sport,
+	    intoaV6(&event->daddr, buf2, sizeof(buf2)), e->dport);
+  }
+
+  *hashval = e->proto + e->sport + e->dport;
 
   *hashval += ntohl(s[0]) + ntohl(s[1]) + ntohl(s[2]) + ntohl(s[3])
       + ntohl(d[0]) + ntohl(d[1]) + ntohl(d[2]) + ntohl(d[3]);
@@ -485,17 +530,26 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
 
-  if(extcap_selected_interface != NULL) {
+  if(log_fp)
+    fprintf(log_fp, "[ifname: %s][extcap: %s/pcap: %s]\n",
+	    event->ifname,
+	    extcap_selected_interface ? extcap_selected_interface : "",
+	    pcap_selected_interface ? pcap_selected_interface : "");
+  
+  if(extcap_selected_interface || pcap_selected_interface) {
     /*
       We are capturing from a physical interface and here we need
       to glue events with packets
     */
 
-    if(strcmp(event->ifname, extcap_selected_interface) == 0) {
+    if(
+       (extcap_selected_interface  && (strcmp(event->ifname, extcap_selected_interface) == 0))
+       || (pcap_selected_interface && (strcmp(event->ifname, pcap_selected_interface) == 0))
+       ) {
       u_int32_t hashval = 0;
       struct ebpf_event evt;
-
-      if(debug) {
+      
+      if(log_fp) {
 	printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u]"
 	       "[father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
 	       event->ifname, event->sent_packet ? "Sent" : "Rcvd",
@@ -525,12 +579,12 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 
 	printf("[hashval: %u]\n", hashval);
       }
-      
+
       if(!lru_find_cache(&received_events, hashval, &evt)) {
 	u_int l; /* Trick to avoid silly compiler warnings */
 
 	memset(&evt, 0, sizeof(evt));
-	
+
 	evt.pid = event->proc.pid, evt.tid = event->proc.tid,
 	  evt.uid = event->proc.uid, evt.gid = event->proc.gid;
 
@@ -539,12 +593,12 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 
 	l = min(sizeof(evt.container_id), strlen(event->container_id));
 	memcpy(evt.container_id, event->container_id, l);
-	
+
 	lru_add_to_cache(&received_events, hashval, &evt);
 	// printf("++++ Adding %u\n", hashval);
       }
     } else {
-      if(debug)
+      if(log_fp)
 	printf("Skipping event for interface %s\n", event->ifname);
     }
   } else {
@@ -705,7 +759,7 @@ void pcap_processs_packet(u_char *_deviceId,
 
   s = (h->ts.tv_sec + thiszone) % 86400;
 
-  if(debug)
+  if(log_fp)
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
@@ -713,7 +767,7 @@ void pcap_processs_packet(u_char *_deviceId,
   memcpy(&ehdr, p, sizeof(struct ether_header));
   eth_type = ntohs(ehdr.ether_type);
 
-  if(debug)
+  if(log_fp)
     printf("[%s -> %s] ",
 	   etheraddr_string(ehdr.ether_shost, buf1),
 	   etheraddr_string(ehdr.ether_dhost, buf2));
@@ -722,7 +776,7 @@ void pcap_processs_packet(u_char *_deviceId,
     vlan_id = (p[14] & 15)*256 + p[15];
     eth_type = (p[16])*256 + p[17];
 
-    if(debug)
+    if(log_fp)
       printf("[vlan %u] ", vlan_id);
 
     p += 4;
@@ -735,7 +789,7 @@ void pcap_processs_packet(u_char *_deviceId,
 
     proto = ip->ip_p;
 
-    if(debug) {
+    if(log_fp) {
       printf("[%s]", proto2str(ip->ip_p));
       printf("[%s ", intoa(ntohl(ip->ip_src.s_addr)));
       printf("-> %s]", intoa(ntohl(ip->ip_dst.s_addr)));
@@ -749,7 +803,7 @@ void pcap_processs_packet(u_char *_deviceId,
 
     proto = ip6->ip6_nxt;
 
-    if(debug) {
+    if(log_fp) {
       printf("[%s ", in6toa(ip6->ip6_src));
       printf("-> %s]", in6toa(ip6->ip6_dst));
     }
@@ -766,23 +820,23 @@ void pcap_processs_packet(u_char *_deviceId,
 
     p += sizeof(struct ip6_hdr)+htons(ip6->ip6_plen);
   } else if(eth_type == 0x0806) {
-    if(debug)
+    if(log_fp)
       printf("[ARP]");
   } else {
-    if(debug)
+    if(log_fp)
       printf("[eth_type=0x%04X]", eth_type);
   }
 
   if(proto) {
-    if(debug) printf("[%s]", proto2str(proto));
+    if(log_fp) printf("[%s]", proto2str(proto));
 
     switch(proto) {
     case IPPROTO_TCP:
       {
 	struct tcphdr *t = (struct tcphdr*)p;
 
-	if(debug)
-	  printf("[%u -> %u]", ntohs(t->source), ntohs(t->dest));
+	if(log_fp)
+	  fprintf(log_fp, "[%u -> %u]", ntohs(t->source), ntohs(t->dest));
 
 	hashval += ntohs(t->source) + ntohs(t->dest);
       }
@@ -791,8 +845,8 @@ void pcap_processs_packet(u_char *_deviceId,
       {
 	struct udphdr *u = (struct udphdr*)p;;
 
-	if(debug)
-	  printf("[%u -> %u]", ntohs(u->source), ntohs(u->dest));
+	if(log_fp)
+	  fprintf(log_fp, "[%u -> %u]", ntohs(u->source), ntohs(u->dest));
 
 	hashval += ntohs(u->source) + ntohs(u->dest);
       }
@@ -800,8 +854,10 @@ void pcap_processs_packet(u_char *_deviceId,
     }
   }
 
-  if(debug)
-    printf("[caplen=%u][len=%u][hashval=%u]\n", h->caplen, h->len, hashval);
+  if(log_fp)
+    fprintf(log_fp, "[caplen=%u][len=%u][hashval=%u]\n", h->caplen, h->len, hashval);
+
+  // if(log_fp) fprintf(log_fp, "[caplen=%u][len=%u][hashval=%u]\n", h->caplen, h->len, hashval);
 
   if(fp) {
     struct ebpf_event evt;
@@ -809,14 +865,14 @@ void pcap_processs_packet(u_char *_deviceId,
     if(lru_find_cache(&received_events, hashval, &evt)) {
       char *packet;
       u_int new_len = h->caplen + sizeof(struct ebpf_event) + 2;
-      
+
       // printf("++++ Found  %u\n", hashval);
 
       packet = (char*)malloc(new_len);
 
       if(packet) {
-	if(debug)
-	  printf("========>>>>>> [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u][len: %u -> %u]\n",
+	if(log_fp)
+	  fprintf(log_fp, "========>>>>>> [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u][len: %u -> %u]\n",
 		 evt.process_name, evt.container_id,
 		 evt.pid, evt.tid, evt.uid, evt.gid,
 		 h->caplen, new_len);
@@ -830,18 +886,17 @@ void pcap_processs_packet(u_char *_deviceId,
 				 (const u_int8_t*)packet, &bytes_written, &err)) {
 	  time_t now = time(NULL);
 	  fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
-	}
+	} else
+	  fflush(fp); /* Flush buffer */
 
 	free(packet);
       }
     } else {
-#if 0
       if(!libpcap_write_packet(fp, h->ts.tv_sec, h->ts.tv_usec, h->caplen, h->len,
 			       (const u_int8_t*)pkt, &bytes_written, &err)) {
 	time_t now = time(NULL);
 	fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
       }
-#endif
     }
   }
 }
@@ -860,10 +915,17 @@ void extcap_capture() {
   int snaplen = 1600;
   char errbuf[PCAP_ERRBUF_SIZE];
 
-  if(debug) printf("[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
-		   __FILE__, __LINE__,
-		   extcap_selected_interface ? extcap_selected_interface : "<NULL>",
-		   extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
+  if(log_fp)
+    fprintf(log_fp, "[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
+	   __FILE__, __LINE__,
+	   pcap_selected_interface ? pcap_selected_interface : "<NULL>",
+	   extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
+
+  if(log_fp)
+    fprintf(log_fp, "[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
+	    __FILE__, __LINE__,
+	    pcap_selected_interface ? pcap_selected_interface : "<NULL>",
+	    extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
 
   ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
 
@@ -876,7 +938,6 @@ void extcap_capture() {
     fprintf(stderr, "Unable to create file %s", extcap_capture_fifo);
     return;
   }
-
 
   if(!libpcap_write_file_header(fp,
 				extcap_selected_interface ? DLT_EN10MB : 0 /* DLT_NULL */,
@@ -892,12 +953,13 @@ void extcap_capture() {
     return;
   }
 
-  if(extcap_selected_interface) {
-    if((pd = pcap_open_live(extcap_selected_interface,
-			    snaplen, promisc, 1, errbuf)) == NULL) {
+  if(pcap_selected_interface) {
+    if((pd = pcap_open_live(pcap_selected_interface, snaplen, promisc, 1, errbuf)) == NULL) {
       printf("pcap_open_live: %s\n", errbuf);
       return;
     }
+
+    if(log_fp) fprintf(log_fp, "Reading packets from %s\n", pcap_selected_interface);
 
     while(1) {
       if(pcap_dispatch(pd, 1, pcap_processs_packet, NULL) < 0) break;
@@ -917,27 +979,6 @@ void extcap_capture() {
   term_ebpf_flow(ebpf);
 
   fclose(fp);
-}
-
-/* ***************************************************** */
-
-int extcap_print_help() {
-  printf("Wireshark extcap eBPF plugin by ntop\n");
-
-  printf("\nSupported command line options:\n");
-  printf("--extcap-interfaces\n");
-  printf("--extcap-version\n");
-  printf("--extcap-dlts\n");
-  printf("--extcap-interface <name>\n");
-  printf("--extcap-config\n");
-  printf("--capture\n");
-  printf("--fifo <name>\n");
-  printf("--debug\n");
-  printf("--name <name>\n");
-  printf("--custom-name <name>\n");
-  printf("--help\n");
-
-  return(0);
 }
 
 /* ***************************************************** */
@@ -968,14 +1009,15 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
   }
 
+  log_fp = fopen("/tmp/ebpfdump.log", "w");
+  
   u_int defer_dlts = 0, defer_config = 0, defer_capture = 0;
-  while ((result = getopt_long(argc, argv, "h", longopts, &option_idx)) != -1) {
+  while((result = getopt_long(argc, argv, "h", longopts, &option_idx)) != -1) {
     // fprintf(stderr, "OPT: '%c' VAL: '%s' \n", result, optarg != NULL ? optarg : "");
 
     switch(result) {
       /* mandatory extcap options */
     case EXTCAP_OPT_DEBUG:
-      debug = 1;
       break;
     case EXTCAP_OPT_LIST_INTERFACES:
       extcap_version();
@@ -1004,6 +1046,10 @@ int main(int argc, char *argv[]) {
       break;
 
       /* custom ebpfdump options */
+    case EBPFDUMP_OPT_IFNAME:
+      pcap_selected_interface = strdup(optarg);
+      break;
+
     case EBPFDUMP_OPT_HELP:
       extcap_print_help();
       return EXIT_SUCCESS;
@@ -1017,6 +1063,8 @@ int main(int argc, char *argv[]) {
 
   if(extcap_selected_interface)   free(extcap_selected_interface);
   if(extcap_capture_fifo)         free(extcap_capture_fifo);
+
+  if(log_fp) fclose(log_fp);
 
   return EXIT_SUCCESS;
 }
