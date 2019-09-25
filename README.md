@@ -90,7 +90,7 @@ $ docker run -it --rm --privileged \
   -v /etc/localtime:/etc/localtime:ro \
   -v /sys/kernel/debug:/sys/kernel/debug \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /snap/bin/microk8s.ctr:/snap/bin/microk8s.ctr \ 
+  -v /snap/bin/microk8s.ctr:/snap/bin/microk8s.ctr \
   ebpflowexport
 ```
 
