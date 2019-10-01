@@ -315,6 +315,9 @@ void print_pcap_interfaces() {
 void extcap_list_all_interfaces() {
   u_int i;
 
+  /* Add eBPF-only events */
+  printf("value {arg=0}{value=%s}{display=eBPF Events}\n", "ebpfevents");
+  
   kubectl_list_interfaces();
 
   /* Print additional interfaces */
@@ -517,7 +520,7 @@ static void IPV6Handler(eBPFevent *e, struct ipv6_addr_t *event, u_int32_t *hash
 /* ***************************************************** */
 
 static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
-  eBPFevent *event = (eBPFevent*)t_data;
+  eBPFevent *e = (eBPFevent*)t_data;
   u_int len = sizeof(eBPFevent)+4;
   char buf[len];
   struct timespec tp;
@@ -525,26 +528,29 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   u_int64_t bytes_written = 0;
   int err;
   u_int32_t *null_sock_type = (u_int32_t*)buf;
+  eBPFevent event;
 
+  memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
+  
   gettimeofday(&now, NULL);
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
 
   if(log_fp)
     fprintf(log_fp, "[ifname: %s][extcap: %s/pcap: %s]\n",
-	    event->ifname,
+	    event.ifname,
 	    extcap_selected_interface ? extcap_selected_interface : "",
 	    pcap_selected_interface ? pcap_selected_interface : "");
   
-  if(extcap_selected_interface || pcap_selected_interface) {
+  if(/* extcap_selected_interface || */ pcap_selected_interface) {
     /*
       We are capturing from a physical interface and here we need
       to glue events with packets
     */
 
     if(
-       (extcap_selected_interface  && (strcmp(event->ifname, extcap_selected_interface) == 0))
-       || (pcap_selected_interface && (strcmp(event->ifname, pcap_selected_interface) == 0))
+       (extcap_selected_interface  && (strcmp(event.ifname, extcap_selected_interface) == 0))
+       || (pcap_selected_interface && (strcmp(event.ifname, pcap_selected_interface) == 0))
        ) {
       u_int32_t hashval = 0;
       struct ebpf_event evt;
@@ -552,29 +558,29 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       if(log_fp) {
 	printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u]"
 	       "[father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
-	       event->ifname, event->sent_packet ? "Sent" : "Rcvd",
-	       (event->proto == IPPROTO_TCP) ? "TCP" : "UDP",
-	       event->proc.pid, event->proc.tid,
-	       (event->proc.full_task_path == NULL) ? event->proc.task : event->proc.full_task_path,
-	       event->proc.uid, event->proc.gid,
-	       event->father.pid, event->father.tid,
-	       (event->father.full_task_path == NULL) ? event->father.task : event->father.full_task_path,
-	       event->father.uid, event->father.gid);
+	       event.ifname, event.sent_packet ? "Sent" : "Rcvd",
+	       (event.proto == IPPROTO_TCP) ? "TCP" : "UDP",
+	       event.proc.pid, event.proc.tid,
+	       (event.proc.full_task_path == NULL) ? event.proc.task : event.proc.full_task_path,
+	       event.proc.uid, event.proc.gid,
+	       event.father.pid, event.father.tid,
+	       (event.father.full_task_path == NULL) ? event.father.task : event.father.full_task_path,
+	       event.father.uid, event.father.gid);
 
-	if(event->ip_version == 4)
-	  IPV4Handler(event, &event->addr.v4, &hashval);
+	if(event.ip_version == 4)
+	  IPV4Handler(&event, &event.addr.v4, &hashval);
 	else
-	  IPV6Handler(event, &event->addr.v6, &hashval);
+	  IPV6Handler(&event, &event.addr.v6, &hashval);
 
-	if(event->container_id[0] != '\0') {
-	  printf("[containerID: %s]", event->container_id);
+	if(event.container_id[0] != '\0') {
+	  printf("[containerID: %s]", event.container_id);
 
-	  if(event->docker.name != NULL)
-	    printf("[docker_name: %s]", event->docker.name);
+	  if(event.docker.name != NULL)
+	    printf("[docker_name: %s]", event.docker.name);
 
-	  if(event->kube.ns)  printf("[kube_name: %s]", event->kube.name);
-	  if(event->kube.pod) printf("[kube_pod: %s]",  event->kube.pod);
-	  if(event->kube.ns)  printf("[kube_ns: %s]",   event->kube.ns);
+	  if(event.kube.ns)  printf("[kube_name: %s]", event.kube.name);
+	  if(event.kube.pod) printf("[kube_pod: %s]",  event.kube.pod);
+	  if(event.kube.ns)  printf("[kube_ns: %s]",   event.kube.ns);
 	}
 
 	printf("[hashval: %u]\n", hashval);
@@ -585,29 +591,34 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 
 	memset(&evt, 0, sizeof(evt));
 
-	evt.pid = event->proc.pid, evt.tid = event->proc.tid,
-	  evt.uid = event->proc.uid, evt.gid = event->proc.gid;
+	evt.pid = event.proc.pid, evt.tid = event.proc.tid,
+	  evt.uid = event.proc.uid, evt.gid = event.proc.gid;
 
-	l = min(sizeof(evt.process_name), strlen(event->proc.task));
-	memcpy(evt.process_name, event->proc.task, l);
+	l = min(sizeof(evt.process_name), strlen(event.proc.task));
+	memcpy(evt.process_name, event.proc.task, l);
 
-	l = min(sizeof(evt.container_id), strlen(event->container_id));
-	memcpy(evt.container_id, event->container_id, l);
+	l = min(sizeof(evt.container_id), strlen(event.container_id));
+	memcpy(evt.container_id, event.container_id, l);
 
 	lru_add_to_cache(&received_events, hashval, &evt);
 	// printf("++++ Adding %u\n", hashval);
       }
     } else {
       if(log_fp)
-	printf("Skipping event for interface %s\n", event->ifname);
+	printf("Skipping event for interface %s\n", event.ifname);
     }
   } else {
+    ebpf_preprocess_event(&event);
+    
+    memcpy(&buf[4], &event, sizeof(eBPFevent));
     if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
 			     (const u_int8_t*)buf, &bytes_written, &err)) {
       time_t now = time(NULL);
       fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
     } else
       fflush(fp); /* Flush buffer */
+
+    ebpf_free_event(&event);
   }
 }
 
@@ -940,8 +951,8 @@ void extcap_capture() {
   }
 
   if(!libpcap_write_file_header(fp,
-				extcap_selected_interface ? DLT_EN10MB : 0 /* DLT_NULL */,
-				extcap_selected_interface ? 2048:  sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
+				pcap_selected_interface ? DLT_EN10MB : 0 /* DLT_NULL */,
+				pcap_selected_interface ? 2048:  sizeof(eBPFevent), FALSE, &bytes_written, &err)) {
     fprintf(stderr, "Unable to write file %s header", extcap_capture_fifo);
     return;
   }
@@ -1047,7 +1058,8 @@ int main(int argc, char *argv[]) {
 
       /* custom ebpfdump options */
     case EBPFDUMP_OPT_IFNAME:
-      pcap_selected_interface = strdup(optarg);
+      if(strcmp(optarg, "ebpfevents") != 0)
+	pcap_selected_interface = strdup(optarg);
       break;
 
     case EBPFDUMP_OPT_HELP:
