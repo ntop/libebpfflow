@@ -105,6 +105,7 @@ static FILE *log_fp                      = NULL;
 static char *all_interfaces[MAX_NUM_INT] = { NULL };
 static u_int8_t num_all_interfaces       = 0;
 static int32_t thiszone;
+static char *containerId                 = NULL;
 
 /* ***************************************************** */
 /* ***************************************************** */
@@ -192,7 +193,7 @@ int docker_list_interfaces() {
 	FILE *fd1;
 
 	container[strlen(container)-1] = '\0'; /* Remove trailing \r */
-	snprintf(cmd, sizeof(cmd), "%s exec -it %s bash -c 'cat /sys/class/net/eth*/iflink'", dcmd, container);
+	snprintf(cmd, sizeof(cmd), "%s exec %s bash -c 'cat /sys/class/net/eth0/iflink'", dcmd, container);
 
 	if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 
@@ -202,7 +203,7 @@ int docker_list_interfaces() {
 	  if(fgets(netId, sizeof(netId)-1, (FILE*)fd1)) {
 	    FILE *fd2;
 	    
-	    netId[strlen(netId)-2] ='\0';
+	    netId[strlen(netId)-1] ='\0';
 
 	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, netId);
 
@@ -226,9 +227,12 @@ int docker_list_interfaces() {
 
 	      fclose(fd2);
 	    }
-	  }
+	  } else
+	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] No output read :-(\n", __FILE__, __LINE__); 
 
 	  fclose(fd1);
+	} else {
+	  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Command failed :-(\n", __FILE__, __LINE__);
 	}
 	
 	container = strtok_r(NULL, " ", &tmp);
@@ -608,6 +612,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent event;
 
   memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
+  ebpf_preprocess_event(&event);
   
   gettimeofday(&now, NULL);
 
@@ -619,15 +624,20 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 	    extcap_selected_interface ? extcap_selected_interface : "",
 	    pcap_selected_interface ? pcap_selected_interface : "");
   
-  if(/* extcap_selected_interface || */ pcap_selected_interface) {
+  if(/* extcap_selected_interface || */
+     pcap_selected_interface
+     || (containerId && (strstr(event.container_id, containerId)))
+     ) {
     /*
       We are capturing from a physical interface and here we need
       to glue events with packets
     */
 
+    // printf("==> [%s][%s][%s]\n", event.container_id, containerId, event.docker.name);
     if(
        (extcap_selected_interface  && (strcmp(event.ifname, extcap_selected_interface) == 0))
        || (pcap_selected_interface && (strcmp(event.ifname, pcap_selected_interface) == 0))
+       || (containerId && event.docker.name && (!strcmp(event.docker.name, containerId)))
        ) {
       u_int32_t hashval = 0;
       struct ebpf_event evt;
@@ -689,8 +699,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       if(log_fp)
 	printf("Skipping event for interface %s\n", event.ifname);
     }
-  } else {
-    ebpf_preprocess_event(&event);
+} else {
     
     memcpy(&buf[4], &event, sizeof(eBPFevent));
     if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
@@ -699,9 +708,9 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
     } else
       fflush(fp); /* Flush buffer */
-
-    ebpf_free_event(&event);
   }
+
+ebpf_free_event(&event);
 }
 
 /* ****************************************************** */
@@ -853,7 +862,7 @@ void pcap_processs_packet(u_char *_deviceId,
   s = (h->ts.tv_sec + thiszone) % 86400;
 
   if(log_fp)
-    printf("%02d:%02d:%02d.%06u ",
+    fprintf(log_fp, "%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
 
@@ -861,7 +870,7 @@ void pcap_processs_packet(u_char *_deviceId,
   eth_type = ntohs(ehdr.ether_type);
 
   if(log_fp)
-    printf("[%s -> %s] ",
+    fprintf(log_fp, "[%s -> %s] ",
 	   etheraddr_string(ehdr.ether_shost, buf1),
 	   etheraddr_string(ehdr.ether_dhost, buf2));
 
@@ -870,7 +879,7 @@ void pcap_processs_packet(u_char *_deviceId,
     eth_type = (p[16])*256 + p[17];
 
     if(log_fp)
-      printf("[vlan %u] ", vlan_id);
+      fprintf(log_fp, "[vlan %u] ", vlan_id);
 
     p += 4;
   }
@@ -883,9 +892,9 @@ void pcap_processs_packet(u_char *_deviceId,
     proto = ip->ip_p;
 
     if(log_fp) {
-      printf("[%s]", proto2str(ip->ip_p));
-      printf("[%s ", intoa(ntohl(ip->ip_src.s_addr)));
-      printf("-> %s]", intoa(ntohl(ip->ip_dst.s_addr)));
+      fprintf(log_fp, "[%s]", proto2str(ip->ip_p));
+      fprintf(log_fp, "[%s ", intoa(ntohl(ip->ip_src.s_addr)));
+      fprintf(log_fp, "-> %s]", intoa(ntohl(ip->ip_dst.s_addr)));
     }
 
     hashval = proto + ntohl(ip->ip_src.s_addr) + ntohl(ip->ip_dst.s_addr);
@@ -897,8 +906,8 @@ void pcap_processs_packet(u_char *_deviceId,
     proto = ip6->ip6_nxt;
 
     if(log_fp) {
-      printf("[%s ", in6toa(ip6->ip6_src));
-      printf("-> %s]", in6toa(ip6->ip6_dst));
+      fprintf(log_fp, "[%s ", in6toa(ip6->ip6_src));
+      fprintf(log_fp, "-> %s]", in6toa(ip6->ip6_dst));
     }
 
     hashval = proto
@@ -914,14 +923,14 @@ void pcap_processs_packet(u_char *_deviceId,
     p += sizeof(struct ip6_hdr)+htons(ip6->ip6_plen);
   } else if(eth_type == 0x0806) {
     if(log_fp)
-      printf("[ARP]");
+      fprintf(log_fp, "[ARP]");
   } else {
     if(log_fp)
-      printf("[eth_type=0x%04X]", eth_type);
+      fprintf(log_fp, "[eth_type=0x%04X]", eth_type);
   }
 
   if(proto) {
-    if(log_fp) printf("[%s]", proto2str(proto));
+    if(log_fp) fprintf(log_fp, "[%s]", proto2str(proto));
 
     switch(proto) {
     case IPPROTO_TCP:
@@ -959,7 +968,7 @@ void pcap_processs_packet(u_char *_deviceId,
       char *packet;
       u_int new_len = h->caplen + sizeof(struct ebpf_event) + 2;
 
-      // printf("++++ Found  %u\n", hashval);
+      // fprintf(log_fp, "++++ Found  %u\n", hashval);
 
       packet = (char*)malloc(new_len);
 
@@ -1007,7 +1016,7 @@ void extcap_capture() {
   int promisc = 1;
   int snaplen = 1600;
   char errbuf[PCAP_ERRBUF_SIZE];
-
+  
   if(log_fp)
     fprintf(log_fp, "[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
 	   __FILE__, __LINE__,
@@ -1027,6 +1036,14 @@ void extcap_capture() {
     return;
   }
 
+  if(pcap_selected_interface) {
+    char *at = strchr(pcap_selected_interface, '@');
+
+    if(at) {
+      at[0] = '\0';
+      containerId = &at[1];
+    }
+  }
   if((fp = fopen(extcap_capture_fifo, "wb")) == NULL) {
     fprintf(stderr, "Unable to create file %s", extcap_capture_fifo);
     return;
