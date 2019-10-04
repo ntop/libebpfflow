@@ -600,6 +600,11 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 	l = min(sizeof(evt.container_id), strlen(event.container_id));
 	memcpy(evt.container_id, event.container_id, l);
 
+	if(log_fp)
+	  fprintf(log_fp, "========>>>>>> Adding %u [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u]\n",
+		  hashval, evt.process_name, evt.container_id,
+		  evt.pid, evt.tid, evt.uid, evt.gid);
+	
 	lru_add_to_cache(&received_events, hashval, &evt);
 	// printf("++++ Adding %u\n", hashval);
       }
@@ -883,11 +888,11 @@ void pcap_processs_packet(u_char *_deviceId,
 
       if(packet) {
 	if(log_fp)
-	  fprintf(log_fp, "========>>>>>> [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u][len: %u -> %u]\n",
-		 evt.process_name, evt.container_id,
-		 evt.pid, evt.tid, evt.uid, evt.gid,
-		 h->caplen, new_len);
-
+	  fprintf(log_fp, "========>>>>>> Reading %u [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u][len: %u -> %u]\n",
+		  hashval, evt.process_name, evt.container_id,
+		  evt.pid, evt.tid, evt.uid, evt.gid,
+		  h->caplen, new_len);
+	
 	memcpy(packet, pkt, h->caplen);
 	packet[h->caplen] = 0x19;
 	packet[h->caplen+1] = 0x68;
