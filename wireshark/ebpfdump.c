@@ -206,7 +206,7 @@ int docker_list_interfaces() {
 
 	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, netId);
 
-	    snprintf(cmd, sizeof(cmd), "grep -l %s /sys/class/net/veth*/ifindex", netId);
+	    snprintf(cmd, sizeof(cmd), "/bin/grep -l %s /sys/class/net/veth*/ifindex", netId);
 	    
 	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
 	    
@@ -237,6 +237,7 @@ int docker_list_interfaces() {
 
     fclose(fd);
   }
+
 
   return(found);
 }
