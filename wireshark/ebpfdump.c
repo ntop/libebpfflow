@@ -169,6 +169,80 @@ void extcap_version() {
 
 /* ***************************************************** */
 
+int docker_list_interfaces() {
+  FILE *fd;
+  int rc, found = 0;
+  struct stat statbuf;
+  const char *dcmd = "/usr/bin/docker";;
+  char cmd[256];
+
+  snprintf(cmd, sizeof(cmd), "%s ps --format '{{.Names}}'", dcmd);
+
+  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+
+  if((fd = popen(cmd, "r")) != NULL) {
+    char line[1024];
+
+    if(fgets(line, sizeof(line)-1, (FILE*) fd)) {
+      char *tmp, *container = strtok_r(line, " ", &tmp);
+
+      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, line);
+
+      while(container) {
+	FILE *fd1;
+
+	container[strlen(container)-1] = '\0'; /* Remove trailing \r */
+	snprintf(cmd, sizeof(cmd), "%s exec -it %s bash -c 'cat /sys/class/net/eth*/iflink'", dcmd, container);
+
+	if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+
+	if((fd1 = popen(cmd, "r")) != NULL) {
+	  char netId[64];
+
+	  if(fgets(netId, sizeof(netId)-1, (FILE*)fd1)) {
+	    FILE *fd2;
+	    
+	    netId[strlen(netId)-2] ='\0';
+
+	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, netId);
+
+	    snprintf(cmd, sizeof(cmd), "grep -l %s /sys/class/net/veth*/ifindex", netId);
+	    
+	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
+	    
+	    if((fd2 = popen(cmd, "r")) != NULL) {
+	      char ifname[128];
+
+	      if(fgets(ifname, sizeof(ifname)-1, (FILE*)fd2)) {
+		char *veth = &ifname[15];
+
+		veth[11] = '\0';
+		
+		if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, veth);
+
+		printf("value {arg=0}{value=%s@%s}{display=Container %s}\n", veth, container, container);
+		found = 1;
+	      }
+
+	      fclose(fd2);
+	    }
+	  }
+
+	  fclose(fd1);
+	}
+	
+	container = strtok_r(NULL, " ", &tmp);
+      }
+    }
+
+    fclose(fd);
+  }
+
+  return(found);
+}
+
+/* ***************************************************** */
+
 void kubectl_list_interfaces() {
   FILE *fd;
   int rc ;
@@ -317,8 +391,10 @@ void extcap_list_all_interfaces() {
 
   /* Add eBPF-only events */
   printf("value {arg=0}{value=%s}{display=eBPF Events}\n", "ebpfevents");
-  
-  kubectl_list_interfaces();
+
+  /* Print kubernetes containers only if there are no docker containers */
+  if(docker_list_interfaces() == 0)
+    kubectl_list_interfaces();
 
   /* Print additional interfaces */
   print_pcap_interfaces();
@@ -1008,6 +1084,8 @@ int main(int argc, char *argv[]) {
   thiszone = gmt_to_local(0);
   lru_cache_init(&received_events);
 
+  log_fp = fopen("/tmp/ebpfdump.log", "w");
+
 #if 0
   /* test code */
   if(0) {
@@ -1025,8 +1103,6 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
   }
 
-  log_fp = fopen("/tmp/ebpfdump.log", "w");
-  
   u_int defer_dlts = 0, defer_config = 0, defer_capture = 0;
   while((result = getopt_long(argc, argv, "h", longopts, &option_idx)) != -1) {
     // fprintf(stderr, "OPT: '%c' VAL: '%s' \n", result, optarg != NULL ? optarg : "");
