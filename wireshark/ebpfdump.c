@@ -323,9 +323,7 @@ void kubectl_list_interfaces() {
 		      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
 
 		      ifname[strlen(ifname)-1] = '\0';
-		      // printf("[ns: %s][pod: %s][iflink: %d][ifname: %s]\n", ns1, pod, atoi(ids), ifname);
-		      printf("value {arg=0}{value=%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns);
-		      //printf("value {arg=0}{value=exec_%s}{display=Pod_%s}\n", ifname, ns1);
+		      printf("value {arg=0}{value=%s@%s}{display=Pod %s, Namespace %s}\n", ifname, ns1, ns1, ns);
 
 		      if(num_all_interfaces < MAX_NUM_INT)
 			all_interfaces[num_all_interfaces++] = strdup(ifname);
@@ -398,7 +396,9 @@ void extcap_list_all_interfaces() {
   printf("value {arg=0}{value=%s}{display=eBPF Events}\n", "ebpfevents");
 
   /* Print kubernetes containers only if there are no docker containers */
-  if(docker_list_interfaces() == 0)
+  i = docker_list_interfaces();
+
+  // if(i == 0)
     kubectl_list_interfaces();
 
   /* Print additional interfaces */
@@ -627,17 +627,22 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   if(/* extcap_selected_interface || */
      pcap_selected_interface
      || (containerId && (strstr(event.container_id, containerId)))
-     ) {
+     || (containerId && (!strcmp(event.kube.pod, containerId)))     
+    ) {
     /*
       We are capturing from a physical interface and here we need
       to glue events with packets
     */
 
-    // printf("==> [%s][%s][%s]\n", event.container_id, containerId, event.docker.name);
+    if(log_fp) fprintf(log_fp, "==> [%s][%s][%s][%s][%s][%s]\n",
+		       event.container_id, containerId, event.docker.name,
+		       event.kube.name, event.kube.pod, event.kube.ns);
+    
     if(
        (extcap_selected_interface  && (strcmp(event.ifname, extcap_selected_interface) == 0))
        || (pcap_selected_interface && (strcmp(event.ifname, pcap_selected_interface) == 0))
        || (containerId && event.docker.name && (!strcmp(event.docker.name, containerId)))
+       || (containerId && event.kube.pod && (!strcmp(event.kube.pod, containerId)))
        ) {
       u_int32_t hashval = 0;
       struct ebpf_event evt;
