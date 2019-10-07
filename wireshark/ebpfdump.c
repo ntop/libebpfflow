@@ -602,7 +602,7 @@ static void IPV6Handler(eBPFevent *e, struct ipv6_addr_t *event, u_int32_t *hash
 
 static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent *e = (eBPFevent*)t_data;
-  u_int len = sizeof(eBPFevent)+4;
+  u_int len = sizeof(eBPFevent)+32;
   char buf[len];
   struct timespec tp;
   struct timeval now;
@@ -695,6 +695,22 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 	lru_add_to_cache(&received_events, hashval, &evt);
 	// printf("++++ Adding %u\n", hashval);
       }
+
+      /* ************************************************* */
+
+      /* Uncomment for dumping events with packets */
+#if 0
+      memset(buf, 0, 14);
+      memcpy(&buf[14], &event, sizeof(eBPFevent));
+      if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
+			       (const u_int8_t*)buf, &bytes_written, &err)) {
+	time_t now = time(NULL);
+	fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
+      } else
+	fflush(fp); /* Flush buffer */
+#endif
+      
+      /* ************************************************* */
     } else {
       if(log_fp)
 	printf("Skipping event for interface %s\n", event.ifname);
@@ -1045,6 +1061,7 @@ void extcap_capture() {
       containerId = &at[1];
     }
   }
+  
   if((fp = fopen(extcap_capture_fifo, "wb")) == NULL) {
     fprintf(stderr, "Unable to create file %s", extcap_capture_fifo);
     return;
