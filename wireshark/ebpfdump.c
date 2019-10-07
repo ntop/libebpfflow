@@ -699,9 +699,9 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       if(log_fp)
 	printf("Skipping event for interface %s\n", event.ifname);
     }
-} else {
-    
+  } else {    
     memcpy(&buf[4], &event, sizeof(eBPFevent));
+    
     if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
 			     (const u_int8_t*)buf, &bytes_written, &err)) {
       time_t now = time(NULL);
@@ -710,7 +710,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       fflush(fp); /* Flush buffer */
   }
 
-ebpf_free_event(&event);
+  ebpf_free_event(&event);
 }
 
 /* ****************************************************** */
@@ -998,7 +998,8 @@ void pcap_processs_packet(u_char *_deviceId,
 			       (const u_int8_t*)pkt, &bytes_written, &err)) {
 	time_t now = time(NULL);
 	fprintf(stderr, "Error while writing packet @ %s", ctime(&now));
-      }
+      } else
+	fflush(fp); /* Flush buffer */
     }
   }
 }
