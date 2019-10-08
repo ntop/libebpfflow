@@ -233,13 +233,11 @@ static int fill_event(struct pt_regs *ctx, eBPFevent *ev,
        (((ev->addr.v6.saddr) & 0xFFFFFFFF) == 0)
        && (((ev->addr.v6.saddr >> 32) & 0xFFFFFFFF) == 0)
        ) {
-      /* ::ffff:127.0.0.1 in IPv6 */
-
       ev->ip_version = 4;
       ev->proc.pid = pid;
-      ev->addr.v4.saddr = 0x0100007f; /* 127.0.0.1 */
+      ev->addr.v4.saddr = ev->addr.v6.saddr >> 96;
       ev->sport = sport;
-      ev->addr.v4.daddr = 0x0100007f; /* 127.0.0.1 */
+      ev->addr.v4.daddr = ev->addr.v6.daddr >> 96;
     }
   }
 
