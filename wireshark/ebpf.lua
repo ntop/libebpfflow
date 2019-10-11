@@ -58,6 +58,7 @@ ebpfflow_fds.father_task  = ProtoField.new("Event Father Task", "ebpfflow.father
 ebpfflow_fds.container_id = ProtoField.new("Event Container Id", "ebpfflow.container_id", ftypes.STRING)
 
 local f_eth_trailer       = Field.new("eth.trailer")
+local f_eth_type          = Field.new("eth.type")
 
 
 -- ebpfflow_fds.application_protocol = ProtoField.new("ebpfflow Application Protocol", "ebpfflow.protocol.application", ftypes.UINT8, nil, base.DEC)
@@ -126,6 +127,146 @@ end
 
 -- ###############################################
 
+function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
+   local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
+
+   ebpf_subtree:add_le(ebpfflow_fds.ktime_sec,  tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.ktime_usec, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add(ebpfflow_fds.ifname,     tvb:range(offset,16))
+   offset = offset + 16
+
+   ebpf_subtree:add_le(ebpfflow_fds.evttime_sec, tvb:range(offset,8))
+   offset = offset + 8
+
+   ebpf_subtree:add_le(ebpfflow_fds.evttime_usec, tvb:range(offset,8))
+   offset = offset + 8
+
+   r = tvb:range(offset,1)
+   ip_version = r:le_uint()
+   ebpf_subtree:add_le(ebpfflow_fds.ip_version, r, ip_version)
+
+   r = tvb:range(offset,1)
+   direction = r:le_uint()
+   ebpf_subtree:add_le(ebpfflow_fds.direction, r, direction)
+   offset = offset + 1
+
+   etype_r = tvb:range(offset,2)
+   etype = etype_r:le_uint()
+   offset = offset + 2
+
+   if(ip_version == 4) then
+      offset = offset + 5
+      ebpf_subtree:add(ebpfflow_fds.sipaddr4, tvb:range(offset,4))
+      offset = offset + 8
+      ebpf_subtree:add(ebpfflow_fds.dipaddr4, tvb:range(offset,4))
+      offset = offset + 19
+   else
+      ebpf_subtree:add(ebpfflow_fds.sipaddr6, tvb:range(offset,16))
+      offset = offset + 16
+      --
+      ebpf_subtree:add(ebpfflow_fds.dipaddr6, tvb:range(offset,16))
+      offset = offset + 16
+   end
+
+   offset = offset + 5 -- padding
+
+   r = tvb:range(offset,1)
+   proto = r:le_uint()
+   ebpf_subtree:add(ebpfflow_fds.proto, r)
+   offset = offset + 1
+
+   offset = offset + 1 -- pad
+
+   ebpf_subtree:add_le(ebpfflow_fds.sport, tvb:range(offset,2))
+   offset = offset + 2
+
+   ebpf_subtree:add_le(ebpfflow_fds.dport, tvb:range(offset,2))
+   offset = offset + 2
+
+   if(proto == 6) then
+      -- TCP
+      ebpf_subtree:add(ebpfflow_fds.etype, etype_r)
+
+      ebpf_subtree:add(ebpfflow_fds.latency, tvb:range(offset,4))
+      offset = offset + 4
+
+      ebpf_subtree:add(ebpfflow_fds.retr, tvb:range(offset,2))
+      offset = offset + 6
+   else
+      offset = offset + 10
+   end
+
+   -- Tasks
+   ebpf_subtree:add_le(ebpfflow_fds.proc_pid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.proc_tid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.proc_uid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.proc_gid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add(ebpfflow_fds.proc_task, tvb:range(offset,16))
+   offset = offset + 16
+
+   offset = offset + 8 -- ptr
+
+   -- Father Task
+   ebpf_subtree:add_le(ebpfflow_fds.father_pid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.father_tid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.father_uid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add_le(ebpfflow_fds.father_gid, tvb:range(offset,4))
+   offset = offset + 4
+
+   ebpf_subtree:add(ebpfflow_fds.father_task, tvb:range(offset,16))
+   offset = offset + 16
+
+   offset = offset + 8 -- ptr
+
+   -- Container
+   ebpf_subtree:add(ebpfflow_fds.container_id, tvb:range(offset,128))
+   offset = offset + 128
+end
+
+-- ###############################################
+
+function  ebpfflow_parse_ebpf_data(tvb, tree, offset)
+   local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
+   
+   ebpf_subtree:add_le(ebpfflow_fds.proc_pid,  tvb:range(offset,4))
+   offset = offset + 4
+   
+   ebpf_subtree:add_le(ebpfflow_fds.proc_tid,  tvb:range(offset,4))
+   offset = offset + 4
+   
+   ebpf_subtree:add_le(ebpfflow_fds.proc_uid,  tvb:range(offset,4))
+   offset = offset + 4
+   
+   ebpf_subtree:add_le(ebpfflow_fds.proc_gid,  tvb:range(offset,4))
+   offset = offset + 4
+   
+   ebpf_subtree:add_le(ebpfflow_fds.proc_task,  tvb:range(offset,8))
+   offset = offset + 8
+   
+   ebpf_subtree:add_le(ebpfflow_fds.container_id,  tvb:range(offset,12))
+   offset = offset + 12
+end
+
+-- ###############################################
+
 -- the dissector function callback
 function ebpfflow_proto.dissector(tvb, pinfo, tree)
    -- Wireshark dissects the packet twice. We ignore the first
@@ -135,33 +276,23 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
    if(pinfo.visited == true) then
       local null_type = f_null_type()
       local eth_trailer = f_eth_trailer()
+      local eth_type = f_eth_type()
+
+      if(eth_type ~= nil) then
+	 local eth_type = getval(eth_type)
+	 if(eth_type == "0x00000000") then
+	    ebpfflow_parse_extended_ebpf_data(tvb, tree, 14)
+	 end
+      end
 
       if(eth_trailer ~= nil) then
 	 local eth_trailer = getval(eth_trailer)
 	 local magic = string.sub(eth_trailer, 1, 5)
-
+ 
 	 if(magic == "19:68") then
-	    local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
 	    local frame_len = getval(f_frame_len())
-
-	    offset = frame_len - 36
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_pid,  tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_tid,  tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_uid,  tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_gid,  tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_task,  tvb:range(offset,8))
-	    offset = offset + 8
-
-	    ebpf_subtree:add_le(ebpfflow_fds.container_id,  tvb:range(offset,12))
-	    offset = offset + 12
+	    
+	    ebpfflow_parse_ebpf_data(tvb, tree, frame_len - 36)
 	 end
       end
 
@@ -169,119 +300,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	 local null_type = getval(null_type)
 
 	 if(null_type == "0x000007e3") then
-	    -- libebpf packet: TODO use file format to avoid dummy nullernet
-	    local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
-
-	    offset = 4 -- DLT_NULL offset
-	    ebpf_subtree:add_le(ebpfflow_fds.ktime_sec,  tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.ktime_usec, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add(ebpfflow_fds.ifname,     tvb:range(offset,16))
-	    offset = offset + 16
-
-	    ebpf_subtree:add_le(ebpfflow_fds.evttime_sec, tvb:range(offset,8))
-	    offset = offset + 8
-
-	    ebpf_subtree:add_le(ebpfflow_fds.evttime_usec, tvb:range(offset,8))
-	    offset = offset + 8
-
-	    r = tvb:range(offset,1)
-	    ip_version = r:le_uint()
-	    ebpf_subtree:add_le(ebpfflow_fds.ip_version, r, ip_version)
-
-	    r = tvb:range(offset,1)
-	    direction = r:le_uint()
-	    ebpf_subtree:add_le(ebpfflow_fds.direction, r, direction)
-	    offset = offset + 1
-
-	    etype_r = tvb:range(offset,2)
-	    etype = etype_r:le_uint()
-	    offset = offset + 2
-
-	    if(ip_version == 4) then
-	       offset = offset + 5
-	       ebpf_subtree:add(ebpfflow_fds.sipaddr4, tvb:range(offset,4))
-	       offset = offset + 8
-	       ebpf_subtree:add(ebpfflow_fds.dipaddr4, tvb:range(offset,4))
-	       offset = offset + 19
-	    else
-	       ebpf_subtree:add(ebpfflow_fds.sipaddr6, tvb:range(offset,16))
-	       offset = offset + 16
-	       --
-	       ebpf_subtree:add(ebpfflow_fds.dipaddr6, tvb:range(offset,16))
-	       offset = offset + 16
-	    end
-
-	    offset = offset + 5 -- padding
-
-	    r = tvb:range(offset,1)
-	    proto = r:le_uint()
-	    ebpf_subtree:add(ebpfflow_fds.proto, r)
-	    offset = offset + 1
-
-	    offset = offset + 1 -- pad
-
-	    ebpf_subtree:add_le(ebpfflow_fds.sport, tvb:range(offset,2))
-	    offset = offset + 2
-
-	    ebpf_subtree:add_le(ebpfflow_fds.dport, tvb:range(offset,2))
-	    offset = offset + 2
-
-	    if(proto == 6) then
-	       -- TCP
-	       ebpf_subtree:add(ebpfflow_fds.etype, etype_r)
-
-	       ebpf_subtree:add(ebpfflow_fds.latency, tvb:range(offset,4))
-	       offset = offset + 4
-
-	       ebpf_subtree:add(ebpfflow_fds.retr, tvb:range(offset,2))
-	       offset = offset + 6
-	    else
-	       offset = offset + 10
-	    end
-
-	    -- Tasks
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_pid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_tid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_uid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.proc_gid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add(ebpfflow_fds.proc_task, tvb:range(offset,16))
-	    offset = offset + 16
-
-	    offset = offset + 8 -- ptr
-
-	    -- Father Task
-	    ebpf_subtree:add_le(ebpfflow_fds.father_pid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.father_tid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.father_uid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add_le(ebpfflow_fds.father_gid, tvb:range(offset,4))
-	    offset = offset + 4
-
-	    ebpf_subtree:add(ebpfflow_fds.father_task, tvb:range(offset,16))
-	    offset = offset + 16
-
-	    offset = offset + 8 -- ptr
-
-	    -- Container
-	    ebpf_subtree:add(ebpfflow_fds.container_id, tvb:range(offset,128))
-	    offset = offset + 128
+	    ebpfflow_parse_ebpf_data(tvb, tree, 4)
 	 end
       end
    end
