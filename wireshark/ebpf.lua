@@ -147,7 +147,8 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
 
    r = tvb:range(offset,1)
    ip_version = r:le_uint()
-   ebpf_subtree:add_le(ebpfflow_fds.ip_version, r, ip_version)
+   ebpf_subtree:add_le(ebpfflow_fds.ip_version, r, ip_version) 
+   offset = offset + 1
 
    r = tvb:range(offset,1)
    direction = r:le_uint()
@@ -155,8 +156,8 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    offset = offset + 1
 
    etype_r = tvb:range(offset,2)
-   etype = etype_r:le_uint()
-   offset = offset + 2
+   etype = etype_r:le_uint(etype_r)
+   offset = offset + 1
 
    if(ip_version == 4) then
       offset = offset + 5
@@ -189,7 +190,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
 
    if(proto == 6) then
       -- TCP
-      ebpf_subtree:add(ebpfflow_fds.etype, etype_r)
+      ebpf_subtree:add(ebpfflow_fds.etype, etype)
 
       ebpf_subtree:add(ebpfflow_fds.latency, tvb:range(offset,4))
       offset = offset + 4
