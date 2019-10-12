@@ -188,18 +188,21 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    ebpf_subtree:add_le(ebpfflow_fds.dport, tvb:range(offset,2))
    offset = offset + 2
 
+   offset = offset + 2 -- padding
    if(proto == 6) then
       -- TCP
       ebpf_subtree:add(ebpfflow_fds.etype, etype)
 
-      ebpf_subtree:add(ebpfflow_fds.latency, tvb:range(offset,4))
+      ebpf_subtree:add_le(ebpfflow_fds.latency, tvb:range(offset,4))
       offset = offset + 4
 
-      ebpf_subtree:add(ebpfflow_fds.retr, tvb:range(offset,2))
-      offset = offset + 6
+      ebpf_subtree:add_le(ebpfflow_fds.retr, tvb:range(offset,2))
+      offset = offset + 2
    else
       offset = offset + 10
    end
+
+   offset = offset + 2 -- pad
 
    -- Tasks
    ebpf_subtree:add_le(ebpfflow_fds.proc_pid, tvb:range(offset,4))
