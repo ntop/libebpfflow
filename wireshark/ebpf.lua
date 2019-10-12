@@ -31,13 +31,13 @@ ebpfflow_fds.ifname       = ProtoField.new("Interface name", "ebpfflow.ifname", 
 ebpfflow_fds.evttime_sec  = ProtoField.uint64("ebpfflow.evttime.sec", "Event time (sec)")
 ebpfflow_fds.evttime_usec = ProtoField.uint64("ebpfflow.evttime.sec", "Event time (usec)")
 ebpfflow_fds.ip_version   = ProtoField.uint8("ebpfflow.ip_version",  "Event IP protocol version")
-ebpfflow_fds.direction    = ProtoField.uint8("ebpfflow.direction", "Event direction")
-ebpfflow_fds.etype        = ProtoField.uint16("ebpfflow.etype", "Event type")
+ebpfflow_fds.direction    = ProtoField.new("Event direction", "ebpfflow.direction", ftypes.STRING)
+ebpfflow_fds.etype        = ProtoField.new("Event type", "ebpfflow.etype", ftypes.STRING)
 ebpfflow_fds.sipaddr4     = ProtoField.new("IPv4 src address", "ebpfflow.srcipv4", ftypes.IPv4)
 ebpfflow_fds.dipaddr4     = ProtoField.new("IPv4 dst address", "ebpfflow.dstipv4", ftypes.IPv4)
 ebpfflow_fds.sipaddr6     = ProtoField.new("IPv6 src address", "ebpfflow.srcipv6", ftypes.IPv6)
 ebpfflow_fds.dipaddr6     = ProtoField.new("IPv6 dst address", "ebpfflow.dstipv6", ftypes.IPv6)
-ebpfflow_fds.proto        = ProtoField.uint8("ebpfflow.proto", "Event protocol")
+ebpfflow_fds.proto        = ProtoField.new("Event protocol", "ebpfflow.proto", ftypes.STRING)
 ebpfflow_fds.sport        = ProtoField.uint16("ebpfflow.sport", "Event source port")
 ebpfflow_fds.dport        = ProtoField.uint16("ebpfflow.dport", "Event destination port")
 ebpfflow_fds.latency      = ProtoField.uint32("ebpfflow.latency", "Event latency (usec)")
@@ -60,6 +60,7 @@ ebpfflow_fds.container_id = ProtoField.new("Event Container Id", "ebpfflow.conta
 local f_eth_trailer       = Field.new("eth.trailer")
 local f_eth_type          = Field.new("eth.type")
 
+local ebpfflow_event      = "eBPFFlow Event"
 
 -- ebpfflow_fds.application_protocol = ProtoField.new("ebpfflow Application Protocol", "ebpfflow.protocol.application", ftypes.UINT8, nil, base.DEC)
 -- ebpfflow_fds.name                 = ProtoField.new("ebpfflow Protocol Name", "ebpfflow.protocol.name", ftypes.STRING)
@@ -104,6 +105,41 @@ end
 
 -- ###############################################
 
+local function direction2str(d)
+   if(d == 1) then
+      return("Sent")
+   else
+      return("Received")
+   end
+end
+
+-- ###############################################
+
+local function proto2str(_p)
+   p = tonumber(_p)
+   if(p == 6) then return("TCP")
+   elseif(p == 17) then return("UDP")
+   else return(_p)
+   end
+end
+
+-- ###############################################
+
+local function event2str(e)
+   if(e == 100) then     return("TCP_Accept")
+   elseif(e == 101) then return("TCP_Connect")
+   elseif(e == 200) then return("TCP_Retransmission")
+   elseif(e == 210) then return("UDP_Receive")
+   elseif(e == 211) then return("UDP_Send")
+   elseif(e == 300) then return("TCP_Close")
+   elseif(e == 500) then return("TCP_ConnectionFailed")
+   else
+      return(""..e)
+   end
+end
+
+-- ###############################################
+
 local function getstring(finfo)
    local ok, val = pcall(tostring, finfo)
    if not ok then val = "(unknown)" end
@@ -127,8 +163,11 @@ end
 
 -- ###############################################
 
-function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
+function  ebpfflow_parse_extended_ebpf_data(pinfo, tvb, tree, offset)
    local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
+
+   pinfo.cols.protocol:set("eBPF")
+   pinfo.cols.info:set(ebpfflow_event)
 
    ebpf_subtree:add_le(ebpfflow_fds.ktime_sec,  tvb:range(offset,4))
    offset = offset + 4
@@ -136,7 +175,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    ebpf_subtree:add_le(ebpfflow_fds.ktime_usec, tvb:range(offset,4))
    offset = offset + 4
 
-   ebpf_subtree:add(ebpfflow_fds.ifname,     tvb:range(offset,16))
+   ebpf_subtree:add(ebpfflow_fds.ifname, tvb:range(offset,16):stringz())
    offset = offset + 16
 
    ebpf_subtree:add_le(ebpfflow_fds.evttime_sec, tvb:range(offset,8))
@@ -152,7 +191,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
 
    r = tvb:range(offset,1)
    direction = r:le_uint()
-   ebpf_subtree:add_le(ebpfflow_fds.direction, r, direction)
+   ebpf_subtree:add_le(ebpfflow_fds.direction, r, direction2str(direction))
    offset = offset + 1
 
    etype_r = tvb:range(offset,2)
@@ -177,7 +216,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
 
    r = tvb:range(offset,1)
    proto = r:le_uint()
-   ebpf_subtree:add(ebpfflow_fds.proto, r)
+   ebpf_subtree:add(ebpfflow_fds.proto, proto2str(proto))
    offset = offset + 1
 
    offset = offset + 1 -- pad
@@ -191,7 +230,9 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    offset = offset + 2 -- padding
    if(proto == 6) then
       -- TCP
-      ebpf_subtree:add(ebpfflow_fds.etype, etype)
+      evt = event2str(etype)
+      pinfo.cols.info:set(evt)
+      ebpf_subtree:add(ebpfflow_fds.etype, evt)
 
       ebpf_subtree:add_le(ebpfflow_fds.latency, tvb:range(offset,4))
       offset = offset + 4
@@ -217,7 +258,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    ebpf_subtree:add_le(ebpfflow_fds.proc_gid, tvb:range(offset,4))
    offset = offset + 4
 
-   ebpf_subtree:add(ebpfflow_fds.proc_task, tvb:range(offset,16))
+   ebpf_subtree:add(ebpfflow_fds.proc_task, tvb:range(offset,16):stringz())
    offset = offset + 16
 
    offset = offset + 8 -- ptr
@@ -235,7 +276,7 @@ function  ebpfflow_parse_extended_ebpf_data(tvb, tree, offset)
    ebpf_subtree:add_le(ebpfflow_fds.father_gid, tvb:range(offset,4))
    offset = offset + 4
 
-   ebpf_subtree:add(ebpfflow_fds.father_task, tvb:range(offset,16))
+   ebpf_subtree:add(ebpfflow_fds.father_task, tvb:range(offset,16):stringz())
    offset = offset + 16
 
    offset = offset + 8 -- ptr
@@ -247,9 +288,9 @@ end
 
 -- ###############################################
 
-function  ebpfflow_parse_ebpf_data(tvb, tree, offset)
+function  ebpfflow_parse_ebpf_data(pinfo, tvb, tree, offset)
    local ebpf_subtree = tree:add(ebpfflow_proto, tvb(), "eBPFFlow Protocol")
-   
+
    ebpf_subtree:add_le(ebpfflow_fds.proc_pid,  tvb:range(offset,4))
    offset = offset + 4
    
@@ -285,7 +326,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
       if(eth_type ~= nil) then
 	 local eth_type = getval(eth_type)
 	 if(eth_type == "0x00000000") then
-	    ebpfflow_parse_extended_ebpf_data(tvb, tree, 14)
+	    ebpfflow_parse_extended_ebpf_data(pinfo, tvb, tree, 14)
 	 end
       end
 
@@ -295,8 +336,8 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
  
 	 if(magic == "19:68") then
 	    local frame_len = getval(f_frame_len())
-	    
-	    ebpfflow_parse_ebpf_data(tvb, tree, frame_len - 36)
+
+	    ebpfflow_parse_ebpf_data(pinfo, tvb, tree, frame_len - 36)
 	 end
       end
 

@@ -35,11 +35,11 @@
 typedef enum {
   eTCP_ACPT = 100,
   eTCP_CONN = 101,
-  eTCP_CONN_FAIL = 500,
+  eTCP_RETR = 200,
   eUDP_RECV = 210,
   eUDP_SEND = 211,
-  eTCP_RETR = 200,
   eTCP_CLOSE = 300,
+  eTCP_CONN_FAIL = 500,
 } event_type;
 
 struct taskInfo {
