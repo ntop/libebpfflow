@@ -196,6 +196,9 @@ function  ebpfflow_parse_extended_ebpf_data(pinfo, tvb, tree, offset)
 
    etype_r = tvb:range(offset,2)
    etype = etype_r:le_uint(etype_r)
+   evt = event2str(etype)
+   pinfo.cols.info:set(evt)
+   ebpf_subtree:add(ebpfflow_fds.etype, evt)
    offset = offset + 1
 
    if(ip_version == 4) then
@@ -230,17 +233,13 @@ function  ebpfflow_parse_extended_ebpf_data(pinfo, tvb, tree, offset)
    offset = offset + 2 -- padding
    if(proto == 6) then
       -- TCP
-      evt = event2str(etype)
-      pinfo.cols.info:set(evt)
-      ebpf_subtree:add(ebpfflow_fds.etype, evt)
-
       ebpf_subtree:add_le(ebpfflow_fds.latency, tvb:range(offset,4))
       offset = offset + 4
 
       ebpf_subtree:add_le(ebpfflow_fds.retr, tvb:range(offset,2))
       offset = offset + 2
    else
-      offset = offset + 10
+      offset = offset + 6
    end
 
    offset = offset + 2 -- pad
@@ -345,7 +344,7 @@ function ebpfflow_proto.dissector(tvb, pinfo, tree)
 	 local null_type = getval(null_type)
 
 	 if(null_type == "0x000007e3") then
-	    ebpfflow_parse_ebpf_data(tvb, tree, 4)
+	    ebpfflow_parse_extended_ebpf_data(pinfo, tvb, tree, 4)
 	 end
       end
    end
