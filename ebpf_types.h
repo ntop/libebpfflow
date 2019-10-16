@@ -61,6 +61,10 @@ struct ipv6_addr_t {
   unsigned __int128 daddr;
 };
 
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 16
+#endif
+
 typedef struct {
   ktime_t ktime;
   char ifname[IFNAMSIZ];

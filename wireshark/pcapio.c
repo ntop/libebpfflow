@@ -28,8 +28,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#ifdef __linux__
 #include <config.h>
-
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>

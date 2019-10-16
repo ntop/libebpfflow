@@ -25,8 +25,18 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
+#ifdef __linux__
 #include <linux/tcp.h>
 #include <linux/udp.h>
+#define th_sport source
+#define th_dport dest
+#define uh_sport source
+#define uh_dport dest
+#else
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#define s6_addr32 __u6_addr.__u6_addr32
+#endif
 #include "pcapio.c"
 #include "ebpf_flow.h"
 
@@ -930,7 +940,7 @@ void pcap_processs_packet(u_char *_deviceId,
       fprintf(log_fp, "[%s ", in6toa(ip6->ip6_src));
       fprintf(log_fp, "-> %s]", in6toa(ip6->ip6_dst));
     }
-
+      
     hashval = proto
       + ntohl(ip6->ip6_src.s6_addr32[0])
       + ntohl(ip6->ip6_src.s6_addr32[1])
@@ -959,9 +969,9 @@ void pcap_processs_packet(u_char *_deviceId,
 	struct tcphdr *t = (struct tcphdr*)p;
 
 	if(log_fp)
-	  fprintf(log_fp, "[%u -> %u]", ntohs(t->source), ntohs(t->dest));
+	  fprintf(log_fp, "[%u -> %u]", ntohs(t->th_sport), ntohs(t->th_dport));
 
-	hashval += ntohs(t->source) + ntohs(t->dest);
+	hashval += ntohs(t->th_sport) + ntohs(t->th_dport);
       }
       break;
     case IPPROTO_UDP:
@@ -969,9 +979,9 @@ void pcap_processs_packet(u_char *_deviceId,
 	struct udphdr *u = (struct udphdr*)p;;
 
 	if(log_fp)
-	  fprintf(log_fp, "[%u -> %u]", ntohs(u->source), ntohs(u->dest));
+	  fprintf(log_fp, "[%u -> %u]", ntohs(u->uh_sport), ntohs(u->uh_dport));
 
-	hashval += ntohs(u->source) + ntohs(u->dest);
+	hashval += ntohs(u->uh_sport) + ntohs(u->uh_dport);
       }
       break;
     }
