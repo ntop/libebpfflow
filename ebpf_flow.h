@@ -24,11 +24,11 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <netinet/in.h>
 #ifdef __linux__
 #include <linux/types.h>
 #include <linux/if.h>
 #endif
-#include <netinet/in.h>
 #include <string.h>
 
 #define ktime_t u_int64_t
