@@ -82,7 +82,7 @@ static const struct option long_opts[] = {
 int main(int argc, char **argv) {
   int ch;
   char* zmq_endpoint = NULL;
-  void *context, *ebpf = NULL;
+  void *context = NULL, *ebpf = NULL;
   short flags = 0;
   ebpfRetCode rc = ebpf_no_error;
   eBPFHandler handler = ebpfHandler;
