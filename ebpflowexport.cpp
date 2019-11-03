@@ -220,7 +220,9 @@ void help() {
 	 "   -r, --retr        Retransmissions events\n"
 	 "   -c, --tcpclose    TCP connection refused and socket close \n"
 	 "   -z, --zmq <port>  Publish JSON events as a ZeroMQ publisher with envelope 'ebpfflow'\n"
-	 "                     Example ebpflowexport -z tcp://127.0.0.1:1234\n\n"
+	 "                     Example:\n"
+	 "                     - ebpflowexport -z tcp://127.0.0.1:1234\n"
+	 "                     - ebpflowexport -z tcp://127.0.0.1:6789c [for Wireshark]\n\n"
 	 "IMPORTANT: please run this tool as root\n"
 	 );
 }
@@ -524,11 +526,20 @@ static void zmqHandler(void* t_bpfctx, void* t_data, int t_datasize) {
   
   // writing event ----- //
   struct zmq_msg_hdr msg_hdr;
+
+  /* 1 Send the event in JSON format */
   strncpy(msg_hdr.url, "flow", sizeof(msg_hdr.url));
   msg_hdr.version = 0;
   msg_hdr.size = strlen(json_str);
   zmq_send(gZMQsocket, &msg_hdr, sizeof(msg_hdr), ZMQ_SNDMORE);
   zmq_send(gZMQsocket, json_str, msg_hdr.size, 0);
+
+  /* 2 Send the event in binary format */
+  strncpy(msg_hdr.url, "ebpf", sizeof(msg_hdr.url));
+  msg_hdr.version = 0;
+  msg_hdr.size = sizeof(eBPFevent);
+  zmq_send(gZMQsocket, &msg_hdr, sizeof(msg_hdr), ZMQ_SNDMORE);
+  zmq_send(gZMQsocket, &event, msg_hdr.size, 0);
 
   json_object_put(json_event);
   ebpf_free_event(&event);

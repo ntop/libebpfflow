@@ -25,6 +25,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
+#include <zmq.h>
 #ifdef __linux__
 #include <linux/tcp.h>
 #include <linux/udp.h>
@@ -71,6 +72,11 @@ struct ebpf_event {
 #define EBPFDUMP_OPT_IFNAME		'n'
 #define EBPFDUMP_OPT_CUSTOM_NAME	'N'
 
+#define EBPFDUMP_EBPFEVENTS_NAME        "ebpfevents"
+#define EBPFDUMP_EBPFZMQEVENTS_NAME     "ebpfzmqevents"
+#define EBPFDUMP_ZMQ_ADDRESS            "tcp://0.0.0.0:6789"
+#define EBPFDUMP_ZMQ_TOPIC              "ebpf"
+
 static struct option longopts[] = {
   /* mandatory extcap options */
   { "extcap-interfaces",	no_argument, 		NULL, EXTCAP_OPT_LIST_INTERFACES },
@@ -103,6 +109,19 @@ typedef struct _extcap_interface {
 static extcap_interface extcap_interfaces[] = {
   { EBPFDUMP_INTERFACE, "eBPF interface", DLT_EN10MB, NULL, "The EN10MB Ethernet2 DLT" },
 };
+
+struct zmq_msg_hdr {
+  char url[32];
+  u_int32_t version;
+  u_int32_t size;
+};
+
+struct zmq_info {
+  u_int8_t initialized;
+  void *z_socket, *z_context;
+};
+
+struct zmq_info zmq;
 
 #define MAX_NUM_INT 32
 
@@ -170,6 +189,40 @@ void sigproc(int sig) {
 }
 
 /* ***************************************************** */
+
+static int initZMQ() {
+  int val = 1;
+
+  zmq.z_context = zmq_ctx_new();
+  zmq.z_socket = zmq_socket(zmq.z_context, ZMQ_SUB);
+  zmq_setsockopt(zmq.z_socket, ZMQ_TCP_KEEPALIVE, &val, sizeof(val));
+
+  if(zmq_bind(zmq.z_socket, EBPFDUMP_ZMQ_ADDRESS) != 0) {
+    printf("Unable to bind to ZMQ socket %s: %s\n",
+	   EBPFDUMP_ZMQ_ADDRESS, strerror(errno));
+    return(-1);
+  } else {
+    if(log_fp) fprintf(log_fp, "Listening on %s for ZMQ events\n", EBPFDUMP_ZMQ_ADDRESS);
+  }
+
+  if(zmq_setsockopt(zmq.z_socket, ZMQ_SUBSCRIBE, EBPFDUMP_ZMQ_TOPIC, strlen(EBPFDUMP_ZMQ_TOPIC)) != 0)
+    return(-1);
+  
+  zmq.initialized = 1;
+  
+  return(0);
+}
+
+/* ***************************************************** */
+
+static int termZMQ() {
+  if(zmq.initialized) {
+    zmq_close(zmq.z_socket);
+    zmq_ctx_destroy(zmq.z_context);
+  }
+}
+
+  /* ***************************************************** */
 
 void extcap_version() {
   /* Print version */
@@ -403,8 +456,9 @@ void extcap_list_all_interfaces() {
   u_int i;
 
   /* Add eBPF-only events */
-  printf("value {arg=0}{value=%s}{display=eBPF Events}\n", "ebpfevents");
-
+  printf("value {arg=0}{value=%s}{display=eBPF Events}\n", EBPFDUMP_EBPFEVENTS_NAME);
+  printf("value {arg=0}{value=%s}{display=eBPF Remote Events (ZMQ)}\n", EBPFDUMP_EBPFZMQEVENTS_NAME);
+  
   /* Print kubernetes containers only if there are no docker containers */
   i = docker_list_interfaces();
 
@@ -622,7 +676,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent event;
 
   memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
-  ebpf_preprocess_event(&event);
+  if(t_bpfctx) ebpf_preprocess_event(&event);
   
   gettimeofday(&now, NULL);
 
@@ -741,7 +795,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       fflush(fp); /* Flush buffer */
   }
 
-  ebpf_free_event(&event);
+  if(t_bpfctx) ebpf_free_event(&event);
 }
 
 /* ****************************************************** */
@@ -1061,13 +1115,20 @@ void extcap_capture() {
 	    pcap_selected_interface ? pcap_selected_interface : "<NULL>",
 	    extcap_capture_fifo ? extcap_capture_fifo : "<NULL>");
 
-  ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
-
-  if(ebpf == NULL) {
-    fprintf(stderr, "Unable to initialize libebpfflow\n");
-    return;
+  if(pcap_selected_interface && (strcmp(pcap_selected_interface, EBPFDUMP_EBPFZMQEVENTS_NAME) == 0)) {
+    if(initZMQ() != 0)
+      return;
+    else
+      pcap_selected_interface = NULL; /* Trick to semplify the rest of the code */
+  } else {  
+    ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
+    
+    if(ebpf == NULL) {
+      fprintf(stderr, "Unable to initialize libebpfflow\n");
+      return;
+    }
   }
-
+  
   if(pcap_selected_interface) {
     char *at = strchr(pcap_selected_interface, '@');
 
@@ -1112,14 +1173,40 @@ void extcap_capture() {
     pcap_close(pd);
   } else {
     /* eBPF-only capture */
+    if(zmq.initialized) {
+      /* We need to poll events via ZMQ */
 
-    while(1) {
-      /* fprintf(stderr, "%u\n", ++num); */
-      ebpf_poll_event(ebpf, 10);
+      while(1) {
+	struct zmq_msg_hdr h;	
+	int size;
+
+#if 0
+	char json_str[2048];
+	
+	size = zmq_recv(zmq.z_socket, &h, sizeof(h), 0);
+	zmq_recv(zmq.z_socket, json_str, h.size, 0);
+	if(log_fp) fprintf(log_fp, "%s\n", json_str);
+	json_str[h.size] = '\0';
+	printf("%s\n", json_str);
+#else
+	eBPFevent event;
+	
+	size = zmq_recv(zmq.z_socket, &h, sizeof(h), 0);
+	zmq_recv(zmq.z_socket, &event, h.size, 0);
+	// printf("Received %u bytes event\n", h.size);
+	ebpf_process_event(NULL, (void*)&event, h.size);
+#endif
+      }
+    } else {    
+      while(1) {
+	/* fprintf(stderr, "%u\n", ++num); */
+	ebpf_poll_event(ebpf, 10);
+      }
     }
   }
 
-  term_ebpf_flow(ebpf);
+  if(!zmq.initialized)
+    term_ebpf_flow(ebpf);
 
   fclose(fp);
 }
@@ -1132,6 +1219,8 @@ int main(int argc, char *argv[]) {
   char date_str[EBPFDUMP_MAX_DATE_LEN];
   struct tm* tm_info;
 
+  memset(&zmq, 0, sizeof(zmq));
+  
   thiszone = gmt_to_local(0);
   lru_cache_init(&received_events);
 
@@ -1210,5 +1299,7 @@ int main(int argc, char *argv[]) {
 
   if(log_fp) fclose(log_fp);
 
+  termZMQ();
+  
   return EXIT_SUCCESS;
 }

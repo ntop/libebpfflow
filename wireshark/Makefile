@@ -19,7 +19,7 @@ endif
 ###############################################################
 
 CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC) -Wformat-truncation
-LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB) -lpcap
+LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB) -lpcap -lzmq
 
 ebpfdump: ebpfdump.c Makefile
 	g++ $(CFLAGS) -g ebpfdump.c -o ebpfdump $(LIBS)
