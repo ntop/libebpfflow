@@ -20,11 +20,13 @@ endif
 ###############################################################
 
 CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC) -Wformat-truncation
-LIBS=$(JSON_LIB) $(LIBCURL_LIB) -lpcap -lzmq
+BASE_LIBS=$(JSON_LIB) $(LIBCURL_LIB) -lpcap -lzmq
 
 OS := $(shell uname -s)
 ifeq ($(OS),Linux)
-LIBS=-L .. -lebpfflow -lbcc  $(LIBS)
+LIBS=-L .. -lebpfflow -lbcc  $(BASE_LIBS)
+else
+LIBS=$(BASE_LIBS)
 endif
 
 ebpfdump: ebpfdump.c Makefile
