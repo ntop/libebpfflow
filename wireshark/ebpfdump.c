@@ -207,22 +207,22 @@ static int initZMQ() {
 
   if(zmq_setsockopt(zmq.z_socket, ZMQ_SUBSCRIBE, EBPFDUMP_ZMQ_TOPIC, strlen(EBPFDUMP_ZMQ_TOPIC)) != 0)
     return(-1);
-  
+
   zmq.initialized = 1;
-  
+
   return(0);
 }
 
 /* ***************************************************** */
 
-static int termZMQ() {
+static void termZMQ() {
   if(zmq.initialized) {
     zmq_close(zmq.z_socket);
     zmq_ctx_destroy(zmq.z_context);
   }
 }
 
-  /* ***************************************************** */
+/* ***************************************************** */
 
 void extcap_version() {
   /* Print version */
@@ -265,15 +265,15 @@ int docker_list_interfaces() {
 
 	  if(fgets(netId, sizeof(netId)-1, (FILE*)fd1)) {
 	    FILE *fd2;
-	    
+
 	    netId[strlen(netId)-1] ='\0';
 
 	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, netId);
 
 	    snprintf(cmd, sizeof(cmd), "/bin/grep -l %s /sys/class/net/veth*/ifindex", netId);
-	    
+
 	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Executing %s\n", __FILE__, __LINE__, cmd);
-	    
+
 	    if((fd2 = popen(cmd, "r")) != NULL) {
 	      char ifname[128];
 
@@ -281,7 +281,7 @@ int docker_list_interfaces() {
 		char *veth = &ifname[15];
 
 		veth[11] = '\0';
-		
+
 		if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, veth);
 
 		printf("value {arg=0}{value=%s@%s}{display=Container %s}\n", veth, container, container);
@@ -291,13 +291,13 @@ int docker_list_interfaces() {
 	      fclose(fd2);
 	    }
 	  } else
-	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] No output read :-(\n", __FILE__, __LINE__); 
+	    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] No output read :-(\n", __FILE__, __LINE__);
 
 	  fclose(fd1);
 	} else {
 	  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Command failed :-(\n", __FILE__, __LINE__);
 	}
-	
+
 	container = strtok_r(NULL, " ", &tmp);
       }
     }
@@ -381,7 +381,7 @@ void kubectl_list_interfaces() {
 		    char ifname[32];
 
 		    if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Pipe open\n", __FILE__, __LINE__);
-		    
+
 		    while(fgets(ifname, sizeof(ifname)-1, (FILE*) fd3)) {
 		      if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] Read %s\n", __FILE__, __LINE__, ifname);
 
@@ -413,7 +413,7 @@ void kubectl_list_interfaces() {
 	} else {
 	  if(log_fp) fprintf(log_fp, "[DEBUG][%s:%u] popen failed\n", __FILE__, __LINE__);
 	}
-	
+
 	ns = strtok_r(NULL, " ", &tmp);
       }
     }
@@ -456,9 +456,13 @@ void extcap_list_all_interfaces() {
   u_int i;
 
   /* Add eBPF-only events */
+#ifdef __linux__
   printf("value {arg=0}{value=%s}{display=eBPF Events}\n", EBPFDUMP_EBPFEVENTS_NAME);
-  printf("value {arg=0}{value=%s}{display=eBPF Remote Events (ZMQ)}\n", EBPFDUMP_EBPFZMQEVENTS_NAME);
+#endif
   
+  printf("value {arg=0}{value=%s}{display=eBPF Remote Events (ZMQ)}\n", EBPFDUMP_EBPFZMQEVENTS_NAME);
+
+#ifdef __linux__
   /* Print kubernetes containers only if there are no docker containers */
   i = docker_list_interfaces();
 
@@ -470,6 +474,7 @@ void extcap_list_all_interfaces() {
 
   for(i=0; i<num_all_interfaces; i++)
     free(all_interfaces[i]);
+#endif
 }
 
 /* ***************************************************** */
@@ -676,8 +681,11 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
   eBPFevent event;
 
   memcpy(&event, e, sizeof(eBPFevent)); /* Copy needed as ebpf_preprocess_event will modify the memory */
+
+#ifdef __linux__
   if(t_bpfctx) ebpf_preprocess_event(&event);
-  
+#endif
+
   gettimeofday(&now, NULL);
 
   *null_sock_type = htonl(SOCKET_LIBEBPF);
@@ -687,11 +695,11 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 	    event.ifname,
 	    extcap_selected_interface ? extcap_selected_interface : "",
 	    pcap_selected_interface ? pcap_selected_interface : "");
-  
+
   if(/* extcap_selected_interface || */
      pcap_selected_interface
      || (containerId && (strstr(event.container_id, containerId)))
-     || (containerId && (!strcmp(event.kube.pod, containerId)))     
+     || (containerId && (!strcmp(event.kube.pod, containerId)))
     ) {
     /*
       We are capturing from a physical interface and here we need
@@ -701,7 +709,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
     if(log_fp) fprintf(log_fp, "==> [%s][%s][%s][%s][%s][%s]\n",
 		       event.container_id, containerId, event.docker.name,
 		       event.kube.name, event.kube.pod, event.kube.ns);
-    
+
     if(
        (extcap_selected_interface  && (strcmp(event.ifname, extcap_selected_interface) == 0))
        || (pcap_selected_interface && (strcmp(event.ifname, pcap_selected_interface) == 0))
@@ -710,7 +718,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
        ) {
       u_int32_t hashval = 0;
       struct ebpf_event evt;
-      
+
       if(log_fp) {
 	printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u]"
 	       "[father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
@@ -760,7 +768,7 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
 	  fprintf(log_fp, "========>>>>>> Adding %u [process_name: %s][container_id: %s][pid: %u][tid: %u][uid: %u][gid: %u]\n",
 		  hashval, evt.process_name, evt.container_id,
 		  evt.pid, evt.tid, evt.uid, evt.gid);
-	
+
 	lru_add_to_cache(&received_events, hashval, &evt);
 	// printf("++++ Adding %u\n", hashval);
       }
@@ -778,15 +786,15 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       } else
 	fflush(fp); /* Flush buffer */
 #endif
-      
+
       /* ************************************************* */
     } else {
       if(log_fp)
 	printf("Skipping event for interface %s\n", event.ifname);
     }
-  } else {    
+  } else {
     memcpy(&buf[4], &event, sizeof(eBPFevent));
-    
+
     if(!libpcap_write_packet(fp, now.tv_sec, now.tv_usec, len, len,
 			     (const u_int8_t*)buf, &bytes_written, &err)) {
       time_t now = time(NULL);
@@ -795,7 +803,9 @@ static void ebpf_process_event(void* t_bpfctx, void* t_data, int t_datasize) {
       fflush(fp); /* Flush buffer */
   }
 
+#ifdef __linux__
   if(t_bpfctx) ebpf_free_event(&event);
+#endif
 }
 
 /* ****************************************************** */
@@ -994,7 +1004,7 @@ void pcap_processs_packet(u_char *_deviceId,
       fprintf(log_fp, "[%s ", in6toa(ip6->ip6_src));
       fprintf(log_fp, "-> %s]", in6toa(ip6->ip6_dst));
     }
-      
+
     hashval = proto
       + ntohl(ip6->ip6_src.s6_addr32[0])
       + ntohl(ip6->ip6_src.s6_addr32[1])
@@ -1063,7 +1073,7 @@ void pcap_processs_packet(u_char *_deviceId,
 		  hashval, evt.process_name, evt.container_id,
 		  evt.pid, evt.tid, evt.uid, evt.gid,
 		  h->caplen, new_len);
-	
+
 	memcpy(packet, pkt, h->caplen);
 	packet[h->caplen] = 0x19;
 	packet[h->caplen+1] = 0x68;
@@ -1102,7 +1112,7 @@ void extcap_capture() {
   int promisc = 1;
   int snaplen = 1600;
   char errbuf[PCAP_ERRBUF_SIZE];
-  
+
   if(log_fp)
     fprintf(log_fp, "[DEBUG][%s:%u] Capturing [ifname: %s][fifo: %s]\n",
 	   __FILE__, __LINE__,
@@ -1120,15 +1130,17 @@ void extcap_capture() {
       return;
     else
       pcap_selected_interface = NULL; /* Trick to semplify the rest of the code */
-  } else {  
+  } else {
+#ifdef __linux__
     ebpf = init_ebpf_flow(NULL, ebpf_process_event, &rc, 0xFFFF);
-    
+
     if(ebpf == NULL) {
       fprintf(stderr, "Unable to initialize libebpfflow\n");
       return;
     }
+#endif
   }
-  
+
   if(pcap_selected_interface) {
     char *at = strchr(pcap_selected_interface, '@');
 
@@ -1137,7 +1149,7 @@ void extcap_capture() {
       containerId = &at[1];
     }
   }
-  
+
   if((fp = fopen(extcap_capture_fifo, "wb")) == NULL) {
     fprintf(stderr, "Unable to create file %s", extcap_capture_fifo);
     return;
@@ -1167,7 +1179,9 @@ void extcap_capture() {
 
     while(1) {
       if(pcap_dispatch(pd, 1, pcap_processs_packet, NULL) < 0) break;
+#ifdef __linux__
       ebpf_poll_event(ebpf, 1);
+#endif
     }
 
     pcap_close(pd);
@@ -1177,12 +1191,12 @@ void extcap_capture() {
       /* We need to poll events via ZMQ */
 
       while(1) {
-	struct zmq_msg_hdr h;	
+	struct zmq_msg_hdr h;
 	int size;
 
 #if 0
 	char json_str[2048];
-	
+
 	size = zmq_recv(zmq.z_socket, &h, sizeof(h), 0);
 	zmq_recv(zmq.z_socket, json_str, h.size, 0);
 	if(log_fp) fprintf(log_fp, "%s\n", json_str);
@@ -1190,24 +1204,28 @@ void extcap_capture() {
 	printf("%s\n", json_str);
 #else
 	eBPFevent event;
-	
+
 	size = zmq_recv(zmq.z_socket, &h, sizeof(h), 0);
 	zmq_recv(zmq.z_socket, &event, h.size, 0);
 	// printf("Received %u bytes event\n", h.size);
 	ebpf_process_event(NULL, (void*)&event, h.size);
 #endif
       }
-    } else {    
+    } else {
+#ifdef __linux__
       while(1) {
 	/* fprintf(stderr, "%u\n", ++num); */
 	ebpf_poll_event(ebpf, 10);
       }
+#endif
     }
   }
 
+#ifdef __linux__
   if(!zmq.initialized)
     term_ebpf_flow(ebpf);
-
+#endif
+  
   fclose(fp);
 }
 
@@ -1220,7 +1238,7 @@ int main(int argc, char *argv[]) {
   struct tm* tm_info;
 
   memset(&zmq, 0, sizeof(zmq));
-  
+
   thiszone = gmt_to_local(0);
   lru_cache_init(&received_events);
 
@@ -1300,6 +1318,6 @@ int main(int argc, char *argv[]) {
   if(log_fp) fclose(log_fp);
 
   termZMQ();
-  
+
   return EXIT_SUCCESS;
 }

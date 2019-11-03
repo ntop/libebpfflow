@@ -1,5 +1,6 @@
 
 EXTCAP_PATH_LINUX=/usr/lib/x86_64-linux-gnu/wireshark/extcap/ebpfdump
+
 ###############################################################
 
 HAS_JSON=$(shell pkg-config --exists json-c; echo $$?)
@@ -19,7 +20,12 @@ endif
 ###############################################################
 
 CFLAGS=-g -I.. $(JSON_INC) $(LIBCURL_INC) -Wformat-truncation
-LIBS=-L .. -lebpfflow -lbcc $(JSON_LIB) $(LIBCURL_LIB) -lpcap -lzmq
+LIBS=$(JSON_LIB) $(LIBCURL_LIB) -lpcap -lzmq
+
+OS := $(shell uname -s)
+ifeq ($(OS),Linux)
+LIBS=-L .. -lebpfflow -lbcc  $(LIBS)
+endif
 
 ebpfdump: ebpfdump.c Makefile
 	g++ $(CFLAGS) -g ebpfdump.c -o ebpfdump $(LIBS)
