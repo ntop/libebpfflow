@@ -29,15 +29,12 @@ all: ebpflowexport
 container_info.o: container_info.cpp container_info.h
 	g++ -c $(CFLAGS) container_info.cpp -o container_info.o
 
-libb64.a:
-	make -C ./libs/b64/src && mv ./libs/b64/src/libb64.a ./libb64.a && make -C ./libs/b64/src clean
-
 libebpfflow.a: ebpf_flow.cpp ebpf_flow.h container_info.o ebpflow.ebpf.enc
-	g++ -c $(CFLAGS) ebpf_flow.cpp -I./libs/ -o ebpf_flow.o
+	g++ -c $(CFLAGS) ebpf_flow.cpp -o ebpf_flow.o
 	ar rvs $@ ebpf_flow.o container_info.o
 
-ebpflowexport: ebpflowexport.cpp libebpfflow.a Makefile libb64.a
-	g++ $(CFLAGS) ebpflowexport.cpp -o $@ libebpfflow.a libb64.a $(LIBS)
+ebpflowexport: ebpflowexport.cpp libebpfflow.a Makefile
+	g++ $(CFLAGS) ebpflowexport.cpp -o $@ libebpfflow.a $(LIBS)
 
 ebpflow.ebpf.enc: ebpflow_header.ebpf ebpf_types.h ebpflow_code.ebpf Makefile
 	echo -n "const char * ebpf_code = R\"(" > ebpflow.ebpf.enc
@@ -48,4 +45,4 @@ go_ebpflowexport: ebpflowexport.go Makefile libebpfflow.a
 	go build -o go_ebpflowexport ebpflowexport.go
 
 clean:
-	/bin/rm -f *~ container_info.a libebpfflow.a *.o ebpflow.ebpf.enc libb64.a
+	/bin/rm -f *~ container_info.a libebpfflow.a *.o ebpflow.ebpf.enc
