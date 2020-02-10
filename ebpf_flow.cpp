@@ -44,7 +44,11 @@ std::string b64decode(const void* data, const size_t len) {
   unsigned char* p = (unsigned char*)data;
   int pad = len > 0 && (len % 4 || p[len - 1] == '=');
   const size_t L = ((len + 3) / 4 - pad) * 4;
-  std::string str(L / 4 * 3 + pad, '\0');
+  const size_t strsize = L / 4 * 3 + pad;
+  if(strsize <= 0) 
+      return std::string();
+  
+  std::string str(strsize, '\0');
   const int B64index[256] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
