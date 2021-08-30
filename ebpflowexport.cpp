@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2018-19 - ntop.org
+ * (C) 2018-21 - ntop.org
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -135,12 +135,12 @@ int main(int argc, char **argv) {
 
   // Checking root ----- //
   if(getuid() != 0) {
-    printf("Please run as root user \n");
+    //printf("Please run as root user \n");
     help();
     return 0;
   }
 
-  printf("Welcome to ebpflowexport v.%s\n(C) 2018-19 ntop.org\n",
+  printf("Welcome to ebpflowexport v.%s\n(C) 2018-21 ntop.org\n",
 	 ebpf_flow_version());
 
   if(zmq_endpoint) {
@@ -208,6 +208,7 @@ int main(int argc, char **argv) {
 
 void help() {
   printf(
+	 "(C) 2018-21 - ntop.org\n"
 	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown\n"
 	 "Termination: CTRL-C\n"
 	 "Usage: ebpflowexport [ OPTIONS ]\n"
@@ -415,8 +416,8 @@ void event2json(eBPFevent *t_event, struct json_object **t_res) {
   struct json_object *proc, *father;
   
   snprintf(buf1, sizeof(buf1), "%u.%06u",
-	     (unsigned int)t_event->event_time.tv_sec,
-	     (unsigned int)t_event->event_time.tv_usec);
+	   (unsigned int)t_event->event_time.tv_sec,
+	   (unsigned int)t_event->event_time.tv_usec);
   json_object_object_add(j, "timestamp", json_object_new_string(buf1));
 
   // json_object_object_add(j, "ktime", json_object_new_int64(t_event->ktime));

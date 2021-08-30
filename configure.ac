@@ -8,14 +8,16 @@ AC_PROG_CXX
 # Use C++ language for tests
 AC_LANG(C++)
 
-AC_CHECK_LIB([bcc], [printf])
-if test "x$ac_cv_lib_bcc_printf" != x""yes; then
-   echo "Please install the bcc-dev(el) package and try again"
-   exit
-fi
+# libbpfcc-dev
+
+# AC_CHECK_LIB([bcc], [printf])
+#if test "x$ac_cv_lib_bcc_printf" != x""yes; then
+#   echo "Please install the bcc-dev(el) package and try again"
+#   exit
+#fi
 
 # Libs required for compilation test below
-LIBS="${LIBS} -lbcc"
+#LIBS="${LIBS} -lbcc"
 
 AC_MSG_CHECKING([eBPF library new API version])
 AC_TRY_COMPILE([
