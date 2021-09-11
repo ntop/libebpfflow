@@ -120,6 +120,10 @@ extern "C" {
 
   const char* ebpf_flow_version();
 
+  /* ******************************************* */
+  /* Helper */
+  void fill_exe_takinfo(struct taskInfo *task);
+  
 #ifdef __cplusplus
 };
 #endif // __cplusplus

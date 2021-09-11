@@ -18,7 +18,7 @@
  *
  */
 
-#define CONTAINER_ID_LEN 128 // max is in dcache.h > DNAME_INLINE_LEN
+#define CONTAINER_ID_LEN 64 /* 128 */ // max is in dcache.h > DNAME_INLINE_LEN
 
 #define COMMAND_LEN 16 // defined in sched.h
 
@@ -47,7 +47,8 @@ struct taskInfo {
   u32 tid; /* Thread Id  */
   u32 uid; /* User Id    */
   u32 gid; /* Group Id   */
-  char task[COMMAND_LEN], *full_task_path;
+  char task[COMMAND_LEN];
+  char *full_task_path, *cmdline;
 };
 
 // separate data structs for ipv4 and ipv6

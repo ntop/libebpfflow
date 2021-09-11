@@ -342,14 +342,18 @@ static void ebpfHandler(void* t_bpfctx, void* t_data, int t_datasize) {
 
   printf("%u.%06u ", (unsigned int)event.event_time.tv_sec, (unsigned int)event.event_time.tv_usec);
 
-  printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s], uid/gid: %u/%u]",
+  printf("[%s][%s][IPv4/%s][pid/tid: %u/%u [%s%s%s], uid/gid: %u/%u][father pid/tid: %u/%u [%s%s%s], uid/gid: %u/%u]",
 	 event.ifname, event.sent_packet ? "Sent" : "Rcvd",
 	 (event.proto == IPPROTO_TCP) ? "TCP" : "UDP",
 	 event.proc.pid, event.proc.tid,
 	 (event.proc.full_task_path == NULL) ? event.proc.task : event.proc.full_task_path,
+	 (event.proc.cmdline == NULL) ? "" : " ",
+	 (event.proc.cmdline == NULL) ? "" : event.proc.cmdline,
 	 event.proc.uid, event.proc.gid,
 	 event.father.pid, event.father.tid,
 	 (event.father.full_task_path == NULL) ? event.father.task : event.father.full_task_path,
+	 (event.father.cmdline == NULL) ? "" : "",
+	 (event.father.cmdline == NULL) ? "": event.father.cmdline,
 	 event.father.uid, event.father.gid);
 
   if(event.ip_version == 4)
@@ -403,6 +407,9 @@ void task2json(struct taskInfo *t, struct json_object **t_res) {
   json_object_object_add(j, "PROCESS_PATH", 
 			 json_object_new_string(t->full_task_path != NULL ? t->full_task_path : t->task));
 
+  json_object_object_add(j, "PROCESS_CMDLINE", 
+			 json_object_new_string(t->cmdline != NULL ? t->cmdline : ""));
+  
   *t_res = j;
 }
 
