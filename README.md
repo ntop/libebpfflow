@@ -20,17 +20,18 @@ libebpfflow is a traffic visibility library based on eBPF able to compute networ
 ### Requirements
 You need a modern eBPF-enabled Linux distribution.
 
-On Ubuntu 16.04/18.04 LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
+On Ubuntu 16.04/18.04/20.04 Server LTS you can install the prerequisites (we assume that the compiler is already installed) as follows:
 ```sh
 $ sudo apt-get install build-essential autoconf automake autogen libjson-c-dev pkg-config libzmq3-dev libcurl4-openssl-dev libbpfcc-dev
 ```
 
 ### Build
-Library only
+Generate makefile
 ```sh
-$ make libebpfflow.a
+$ ./autogen.sh
 ```
-Library and ebpflowexport
+
+Now build averything
 ```sh
 $ make
 ```
