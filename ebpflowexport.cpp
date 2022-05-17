@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2018-21 - ntop.org
+ * (C) 2018-22 - ntop.org
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  printf("Welcome to ebpflowexport v.%s\n(C) 2018-21 ntop.org\n",
+  printf("Welcome to ebpflowexport v.%s\n(C) 2018-22 ntop.org\n",
 	 ebpf_flow_version());
 
   if(zmq_endpoint) {
@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
 
 void help() {
   printf(
-	 "(C) 2018-21 - ntop.org\n"
+	 "(C) 2018-22 - ntop.org\n"
 	 "ebpflowexport: Traffic visibility tool based on libebpfflow. By default all events will be shown\n"
 	 "Termination: CTRL-C\n"
 	 "Usage: ebpflowexport [ OPTIONS ]\n"

@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2018-21 - ntop.org
+ * (C) 2018-22 - ntop.org
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -26,15 +26,16 @@
 #include <stdlib.h>
 #include <unordered_map>
 #include <set>
+#include <string>
  
- struct container_info {
-   struct {
-     std::string name;
-   } docker;
-   
-   struct {
-     std::string name, pod, ns;
-   } kube;
+struct container_info {
+  struct {
+    std::string name;
+  } docker;
+  
+  struct {
+    std::string name, pod, ns;
+  } kube;
 };
 
 // Cache cleaning and namespace update interval in seconds
